@@ -12,12 +12,26 @@
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.9/dat.gui.min.js"></script>
+// Error handling
+window.addEventListener('error', (e) => {
+    console.error('Error:', e.error);
+    document.getElementById('status').innerText = 'Error: ' + e.error.message;
+});
+
+renderer.context.getError(); // Check WebGL errors
 </head>
 <body>
 <div id="ui"><div style="font-weight:600;color:#cfe">Quantum Field (CQFT α=φ)</div></div>
 <div id="status">Initializing...</div>
 <canvas id="c"></canvas>
 <script>
+// Error handling
+window.addEventListener('error', (e) => {
+    console.error('Error:', e.error);
+    document.getElementById('status').innerText = 'Error: ' + e.error.message;
+});
+
+renderer.context.getError(); // Check WebGL errors
 const φ = (1 + Math.sqrt(5))/2;
 const goldenAngle = Math.PI*2/φ;
 const eta = 0.809016994;
