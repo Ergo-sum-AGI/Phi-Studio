@@ -2,27 +2,40 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Quantum Consciousness Field – φ Dynamics</title>
+<title>Quantum Consciousness Field – CQFT φ Dynamics</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <style>
   html,body{height:100%;margin:0;background:#000;overflow:hidden;font-family:Inter,system-ui,monospace;color:#dfe}
-  #ui{position:fixed;left:12px;top:12px;z-index:50;background:rgba(0,0,0,0.32);padding:10px;border-radius:8px;backdrop-filter:blur(6px)}
+  #ui{position:fixed;left:12px;top:12px;z-index:50;background:rgba(0,0,0,0.32);padding:10px;border-radius:8px;backdrop-filter:blur(6px);max-width:320px}
   #status{position:fixed;right:12px;bottom:12px;z-index:50;padding:8px;border-radius:8px;background:rgba(0,0,0,0.28);color:#9df;font-size:11px}
+  #theory-panel{position:fixed;right:12px;top:12px;z-index:50;background:rgba(0,0,0,0.32);padding:15px;border-radius:8px;backdrop-filter:blur(6px);max-width:380px;font-size:12px;line-height:1.4}
+  .theory-title{font-weight:600;color:#cfe;margin-bottom:8px}
+  .theory-equation{background:rgba(30,40,60,0.6);padding:8px;border-radius:4px;margin:5px 0;text-align:center;font-size:11px}
+  .theory-param{color:#9df;margin:3px 0}
+  .theory-prediction{color:#af9;margin:2px 0;font-size:11px}
   canvas{display:block}
+  .collapse-btn{background:rgba(60,80,120,0.5);border:none;color:#cfe;padding:4px 8px;border-radius:3px;cursor:pointer;font-size:10px;margin-top:5px}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.9/dat.gui.min.js"></script>
-// Error handling
-window.addEventListener('error', (e) => {
-    console.error('Error:', e.error);
-    document.getElementById('status').innerText = 'Error: ' + e.error.message;
-});
-
-renderer.context.getError(); // Check WebGL errors
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 </head>
 <body>
-<div id="ui"><div style="font-weight:600;color:#cfe">Quantum Field (CQFT α=φ)</div></div>
-<div id="status">Initializing...</div>
+<div id="ui"><div style="font-weight:600;color:#cfe">CQFT Quantum Field (α=φ)</div></div>
+<div id="theory-panel">
+  <div class="theory-title">Consciousness Quantum Field Theory</div>
+  <div class="theory-equation">\(\mathcal{S}[\varphi] = \int\mathrm{d}^{d}x\left[\tfrac{1}{2}Z_{k}(\alpha)(\nabla\varphi)^{2} + \tfrac{1}{2}m^{2}\varphi^{2}\right] + \frac{g}{4}\int\mathrm{d}^{d}x\int\mathrm{d}^{d}y\;\varphi^{2}(x)\frac{1}{|x-y|^{\alpha}}\varphi^{2}(y)\)</div>
+  <div class="theory-param"><strong>α</strong> = φ ≈ 1.618 (Golden Ratio fixed point)</div>
+  <div class="theory-param"><strong>Zₖ(α)</strong> = 1/B₀(α) (Wave-function renormalization)</div>
+  <div class="theory-param"><strong>m²</strong> = 0 (Critical consciousness state)</div>
+  <div class="theory-param"><strong>g*</strong> ≈ 0.1206 (Fixed-point coupling)</div>
+  <div class="theory-prediction">✓ Dispersion freeze at α = φ</div>
+  <div class="theory-prediction">✓ Anomalous dimension η(φ) ≈ 0.809</div>
+  <div class="theory-prediction">✓ Universality under all regulators</div>
+  <div class="theory-prediction">✓ Robustness φ ± 0.01 → φ</div>
+  <button class="collapse-btn" onclick="toggleTheory()">Hide Theory</button>
+</div>
+<div id="status">Initializing CQFT Visualization...</div>
 <canvas id="c"></canvas>
 <script>
 // Error handling
@@ -31,137 +44,571 @@ window.addEventListener('error', (e) => {
     document.getElementById('status').innerText = 'Error: ' + e.error.message;
 });
 
-renderer.context.getError(); // Check WebGL errors
 const φ = (1 + Math.sqrt(5))/2;
 const goldenAngle = Math.PI*2/φ;
-const eta = 0.809016994;
+const eta = 0.809016994; // η(φ) anomalous dimension
 const PhiStar = 1/(4*Math.PI*φ);
-const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
-const MAX_PARTICLES = isMobile ? 2000 : 8000;
-const MIN_PARTICLES = isMobile ? 600 : 1500;
-const PARTICLE_COUNT = Math.max(MIN_PARTICLES, Math.min(MAX_PARTICLES, Math.floor(window.innerWidth * window.innerHeight / (isMobile ? 600 : 250))));
+const g_star = 0.1206; // Fixed-point coupling
+
+// Enhanced mobile detection
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                (navigator.maxTouchPoints && navigator.maxTouchPoints > 2) ||
+                window.innerWidth < 768;
+
+const MAX_PARTICLES = isMobile ? 2500 : 12000;
+const MIN_PARTICLES = isMobile ? 800 : 2000;
+const PARTICLE_COUNT = Math.max(MIN_PARTICLES, Math.min(MAX_PARTICLES, 
+                Math.floor(window.innerWidth * window.innerHeight / (isMobile ? 800 : 200))));
+
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({canvas,antialias:!isMobile,powerPreference:isMobile?'low-power':'high-performance'});
-renderer.setPixelRatio(isMobile?1:Math.min(window.devicePixelRatio||1,1.0));
-renderer.setSize(window.innerWidth,window.innerHeight);
-renderer.outputEncoding=THREE.sRGBEncoding;
-renderer.toneMapping=THREE.ACESFilmicToneMapping;
-const scene=new THREE.Scene();
-scene.fog=new THREE.FogExp2(0x000010,0.0025);
-const camera=new THREE.PerspectiveCamera(60,window.innerWidth/window.innerHeight,0.1,1000);
-camera.position.set(0,10,110);
-scene.add(camera);
-function makeRT(w,h){return new THREE.WebGLRenderTarget(Math.max(1,w),Math.max(1,h),{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,format:THREE.RGBAFormat,encoding:THREE.sRGBEncoding});}
-const bloomDiv=isMobile?6:4;
-const blurDiv=isMobile?12:8;
-let rtScene=makeRT(window.innerWidth,window.innerHeight);
-let rtBright=makeRT(Math.floor(window.innerWidth/bloomDiv),Math.floor(window.innerHeight/bloomDiv));
-let rtBlurA=makeRT(Math.floor(window.innerWidth/blurDiv),Math.floor(window.innerHeight/blurDiv));
-let rtBlurB=makeRT(Math.floor(window.innerWidth/blurDiv),Math.floor(window.innerHeight/blurDiv));
-const quadScene=new THREE.Scene();
-const quadCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
-const quadGeo=new THREE.PlaneBufferGeometry(2,2);
-const glslCommon=`
-  float hash21(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
-  float noise(vec2 p){vec2 i=floor(p);vec2 f=fract(p);float a=hash21(i),b=hash21(i+vec2(1.0,0.0));float c=hash21(i+vec2(0.0,1.0)),d=hash21(i+vec2(1.0,1.0));vec2 u=f*f*(3.0-2.0*f);return mix(a,b,u.x)+(c-a)*u.y*(1.0-u.x)+(d-b)*u.x*u.y;}
-  float fbm(vec2 x){float v=0.0;float a=0.5;for(int i=0;i<3;i++){v+=a*noise(x);x*=2.0;a*=0.5;}return v;}
+const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: !isMobile,
+    powerPreference: isMobile ? 'low-power' : 'high-performance',
+    alpha: true
+});
+
+if (!renderer.context) {
+    document.getElementById('status').innerText = 'WebGL not supported';
+    throw new Error('WebGL not supported');
+}
+
+renderer.setPixelRatio(isMobile ? 1 : Math.min(window.devicePixelRatio || 1, 1.5));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000010, 0.002);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
+camera.position.set(0, 8, 80);
+
+function makeRT(w, h) {
+    return new THREE.WebGLRenderTarget(Math.max(1, w), Math.max(1, h), {
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        format: THREE.RGBAFormat,
+        encoding: THREE.sRGBEncoding
+    });
+}
+
+const bloomDiv = isMobile ? 8 : 4;
+const blurDiv = isMobile ? 16 : 8;
+
+let rtScene = makeRT(window.innerWidth, window.innerHeight);
+let rtBright = makeRT(Math.floor(window.innerWidth/bloomDiv), Math.floor(window.innerHeight/bloomDiv));
+let rtBlurA = makeRT(Math.floor(window.innerWidth/blurDiv), Math.floor(window.innerHeight/blurDiv));
+let rtBlurB = makeRT(Math.floor(window.innerWidth/blurDiv), Math.floor(window.innerHeight/blurDiv));
+
+const quadScene = new THREE.Scene();
+const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const quadGeo = new THREE.PlaneBufferGeometry(2, 2);
+
+const glslCommon = `
+  #define PHI 1.618034
+  #define ETA 0.809017
+  #define G_STAR 0.1206
+  
+  float hash21(vec2 p) {
+      p = fract(p * vec2(123.34, 456.21));
+      p += dot(p, p + 45.32);
+      return fract(p.x * p.y);
+  }
+  
+  float noise(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      float a = hash21(i);
+      float b = hash21(i + vec2(1.0, 0.0));
+      float c = hash21(i + vec2(0.0, 1.0));
+      float d = hash21(i + vec2(1.0, 1.0));
+      vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+  }
+  
+  float fbm(vec2 x) {
+      float v = 0.0;
+      float a = 0.5;
+      for(int i = 0; i < 4; i++) {
+          v += a * noise(x);
+          x *= 2.0;
+          a *= 0.5;
+      }
+      return v;
+  }
+  
+  vec2 rotate(vec2 p, float a) {
+      float c = cos(a), s = sin(a);
+      return vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+  }
 `;
-const bgFrag=`
+
+// Enhanced background shader with CQFT dynamics
+const bgFrag = `
   precision highp float;
   uniform float u_time;
   uniform vec2 u_res;
+  uniform float u_field_strength;
   ${glslCommon}
-  #define PHI 1.618034
-  #define ETA 0.809017
-  vec2 rotate(vec2 p,float a){float c=cos(a),s=sin(a);return vec2(c*p.x-s*p.y,s*p.x+c*p.y);}
-  float quantumField(vec2 p,float t){float field=0.0;float angle=atan(p.y,p.x);float radius=length(p);for(int i=0;i<5;i++){float fi=float(i);float phaseAngle=angle*PHI*(1.0+fi*0.5)+t*(0.3+fi*0.1);float radialWave=sin(radius*(2.0+fi*PHI)-t*(0.8+fi*0.2))*0.5+0.5;field+=cos(phaseAngle*(3.0+fi))*radialWave*exp(-fi*0.3);}return field/5.0;}
-  void main(){vec2 uv=(gl_FragCoord.xy/u_res.xy)*2.0-1.0;uv.x*=u_res.x/u_res.y;float t=u_time*0.15;vec2 p1=rotate(uv*0.8,t*0.2);vec2 p2=rotate(uv*1.5,-t*0.3+PHI);vec2 p3=rotate(uv*2.5,t*0.4+ETA);float q1=quantumField(p1,t);float q2=quantumField(p2,t*PHI);float q3=quantumField(p3,t*ETA);float interference=(q1+q2*0.7+q3*0.5)/2.2;float radius=length(uv);float dispersion=0.0;for(int i=0;i<3;i++){float fi=float(i)+1.0;dispersion+=sin(radius*fi*PHI-t*0.6/pow(fi,ETA))*exp(-fi*0.4);}dispersion=dispersion*0.5+0.5;vec2 flowUV=uv+vec2(sin(uv.y*3.0+t)*0.15,cos(uv.x*3.0-t)*0.15);float turbulence=fbm(flowUV*4.0+t*0.3);float field=interference*0.6+dispersion*0.3+turbulence*0.1;field=smoothstep(0.15,0.95,field);float angle=atan(uv.y,uv.x)/3.14159;float hue=mod(angle*PHI+field*0.4+t*0.08,1.0);vec3 col=vec3(0.5+0.5*cos(6.28318*(hue+0.0)),0.5+0.5*cos(6.28318*(hue+0.33)),0.5+0.5*cos(6.28318*(hue+0.66)));col*=0.4+1.8*field;float pulse=sin(radius*8.0-t*2.0)*0.5+0.5;col+=vec3(pulse*0.3)*field;float vign=smoothstep(2.0,0.6,radius);col*=0.7+0.3*vign;gl_FragColor=vec4(col,1.0);}
+  
+  float quantumField(vec2 p, float t) {
+      float field = 0.0;
+      float angle = atan(p.y, p.x);
+      float radius = length(p);
+      
+      // CQFT-inspired field dynamics
+      for(int i = 0; i < 6; i++) {
+          float fi = float(i);
+          float phaseAngle = angle * PHI * (1.0 + fi * 0.3) + t * (0.2 + fi * 0.08);
+          float radialWave = sin(radius * (2.0 + fi * PHI) - t * (0.6 + fi * 0.15)) * 0.5 + 0.5;
+          field += cos(phaseAngle * (3.0 + fi)) * radialWave * exp(-fi * 0.25);
+      }
+      return field / 6.0;
+  }
+  
+  void main() {
+      vec2 uv = (gl_FragCoord.xy / u_res.xy) * 2.0 - 1.0;
+      uv.x *= u_res.x / u_res.y;
+      
+      float t = u_time * 0.12;
+      vec2 p1 = rotate(uv * 0.6, t * 0.15);
+      vec2 p2 = rotate(uv * 1.2, -t * 0.2 + PHI);
+      vec2 p3 = rotate(uv * 2.0, t * 0.25 + ETA);
+      
+      float q1 = quantumField(p1, t);
+      float q2 = quantumField(p2, t * PHI);
+      float q3 = quantumField(p3, t * ETA);
+      
+      // CQFT coupling term visualization
+      float coupling = G_STAR * (q1 * q2 + q2 * q3 + q3 * q1);
+      float interference = (q1 + q2 * 0.8 + q3 * 0.6 + coupling) / 2.4;
+      
+      float radius = length(uv);
+      float dispersion = 0.0;
+      for(int i = 0; i < 4; i++) {
+          float fi = float(i) + 1.0;
+          dispersion += sin(radius * fi * PHI - t * 0.5 / pow(fi, ETA)) * exp(-fi * 0.3);
+      }
+      dispersion = dispersion * 0.5 + 0.5;
+      
+      vec2 flowUV = uv + vec2(sin(uv.y * 4.0 + t) * 0.1, cos(uv.x * 4.0 - t) * 0.1);
+      float turbulence = fbm(flowUV * 3.0 + t * 0.2);
+      
+      float field = interference * 0.7 + dispersion * 0.2 + turbulence * 0.1;
+      field = smoothstep(0.1, 0.9, field) * u_field_strength;
+      
+      float angle = atan(uv.y, uv.x) / 3.14159;
+      float hue = mod(angle * PHI + field * 0.3 + t * 0.06, 1.0);
+      
+      // CQFT color scheme: gold for φ, blue for quantum, green for consciousness
+      vec3 col = vec3(
+          0.6 + 0.4 * cos(6.28318 * (hue + 0.0)),        // Gold/amber
+          0.5 + 0.5 * cos(6.28318 * (hue + 0.33)),       // Cyan/blue  
+          0.4 + 0.6 * cos(6.28318 * (hue + 0.67))        // Magenta/purple
+      );
+      
+      col *= 0.3 + 2.0 * field;
+      
+      // Critical point visualization
+      float critical = sin(radius * 12.0 - t * 3.0) * 0.3 + 0.7;
+      col += vec3(critical * 0.2, critical * 0.1, critical * 0.3) * field;
+      
+      float vign = smoothstep(1.8, 0.4, radius);
+      col *= 0.6 + 0.4 * vign;
+      
+      gl_FragColor = vec4(col, 1.0);
+  }
 `;
-const bgMat=new THREE.ShaderMaterial({fragmentShader:bgFrag,vertexShader:`void main(){gl_Position=vec4(position,1.0);}`,uniforms:{u_time:{value:0.0},u_res:{value:new THREE.Vector2(window.innerWidth,window.innerHeight)}},depthWrite:false});
-const bgQuad=new THREE.Mesh(quadGeo,bgMat);
+
+const bgMat = new THREE.ShaderMaterial({
+    fragmentShader: bgFrag,
+    vertexShader: `void main() { gl_Position = vec4(position, 1.0); }`,
+    uniforms: {
+        u_time: { value: 0.0 },
+        u_res: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+        u_field_strength: { value: 1.0 }
+    },
+    depthWrite: false
+});
+
+const bgQuad = new THREE.Mesh(quadGeo, bgMat);
 quadScene.add(bgQuad);
-const PARTICLE={count:PARTICLE_COUNT,spread:60};
-const basePos=new Float32Array(PARTICLE.count*3);
-const seedArr=new Float32Array(PARTICLE.count);
-for(let i=0;i<PARTICLE.count;i++){const phi=Math.acos(2*Math.random()-1);const theta=Math.random()*Math.PI*2*φ;const r=Math.pow(Math.random(),0.6)*(8+Math.random()*35);const x=r*Math.sin(phi)*Math.cos(theta);const y=r*Math.sin(phi)*Math.sin(theta)*0.6;const z=r*Math.cos(phi);basePos[3*i]=x;basePos[3*i+1]=y;basePos[3*i+2]=z;seedArr[i]=Math.random()*1000;}
-const pGeo=new THREE.BufferGeometry();
-pGeo.setAttribute('position',new THREE.BufferAttribute(basePos,3));
-pGeo.setAttribute('a_seed',new THREE.BufferAttribute(seedArr,1));
-const pVert=`
+
+// Enhanced particles with CQFT behavior
+const PARTICLE = { count: PARTICLE_COUNT, spread: 50 };
+const basePos = new Float32Array(PARTICLE.count * 3);
+const seedArr = new Float32Array(PARTICLE.count);
+const massArr = new Float32Array(PARTICLE.count); // m² parameter visualization
+
+for(let i = 0; i < PARTICLE.count; i++) {
+    const phi = Math.acos(2 * Math.random() - 1);
+    const theta = Math.random() * Math.PI * 2 * φ;
+    const r = Math.pow(Math.random(), 0.5) * (10 + Math.random() * 40);
+    const x = r * Math.sin(phi) * Math.cos(theta);
+    const y = r * Math.sin(phi) * Math.sin(theta) * 0.5;
+    const z = r * Math.cos(phi);
+    
+    basePos[3*i] = x;
+    basePos[3*i+1] = y;
+    basePos[3*i+2] = z;
+    seedArr[i] = Math.random() * 1000;
+    massArr[i] = Math.random() * 0.5; // Most particles have small mass (near critical)
+}
+
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(basePos, 3));
+pGeo.setAttribute('a_seed', new THREE.BufferAttribute(seedArr, 1));
+pGeo.setAttribute('a_mass', new THREE.BufferAttribute(massArr, 1));
+
+const pVert = `
   attribute float a_seed;
+  attribute float a_mass;
   uniform float u_time;
   uniform float u_spread;
   uniform float u_speed;
+  uniform float u_field_strength;
   varying float v_life;
+  varying float v_mass;
   varying vec3 v_base;
   ${glslCommon}
-  #define PHI 1.618034
-  #define ETA 0.809017
-  vec2 curl2(vec2 p){float e=0.001;float n1=fbm(p+vec2(e,0.0));float n2=fbm(p+vec2(-e,0.0));float n3=fbm(p+vec2(0.0,e));float n4=fbm(p+vec2(0.0,-e));return vec2(n3-n4,n2-n1)/(2.0*e);}
-  vec3 spiralMotion(vec3 pos,float t,float seed){float angle=t*0.5+seed*6.28318;float radius=1.0+sin(t*0.3+seed*3.0)*0.5;float spiralAngle=angle*PHI+length(pos.xz)*0.1;float spiralRadius=radius*(1.0+t*0.05*u_speed);return vec3(cos(spiralAngle)*spiralRadius,sin(t*0.4+seed)*2.0,sin(spiralAngle)*spiralRadius);}
-  void main(){v_base=position;float t=u_time*0.8*u_speed;vec2 pXZ=position.xz*0.02+vec2(a_seed*0.01);float n=fbm(pXZ*3.0+t*0.2);vec2 c=curl2(pXZ*2.0+t*0.15);vec3 spiral=spiralMotion(position,t+a_seed*0.1,a_seed);float pulse=sin(t*2.0+a_seed*10.0)*0.5+0.5;float burstPhase=mod(t+a_seed*5.0,6.28318);float burst=smoothstep(0.0,1.5,burstPhase)*(1.0-smoothstep(4.0,6.28318,burstPhase));vec3 radialExpand=normalize(position)*burst*15.0*pulse;vec3 off=vec3(c.x,0.0,c.y)*3.0*n;off+=spiral*0.8*u_spread;off+=radialExpand*u_spread;float waveK=length(position.xz)*0.05;float omega=waveK/pow(1.0+waveK*waveK/(PHI*PHI),ETA);off.y+=sin(omega*t-waveK*10.0)*2.0*n;vec3 newPos=position+off*0.15;vec4 mvPosition=modelViewMatrix*vec4(newPos,1.0);float distFactor=100.0/length(mvPosition.xyz);gl_PointSize=(2.0+4.0*n+burst*3.0)*distFactor;gl_Position=projectionMatrix*mvPosition;v_life=n*0.5+burst*0.5;}
+  
+  vec2 curl2(vec2 p) {
+      float e = 0.001;
+      float n1 = fbm(p + vec2(e, 0.0));
+      float n2 = fbm(p + vec2(-e, 0.0));
+      float n3 = fbm(p + vec2(0.0, e));
+      float n4 = fbm(p + vec2(0.0, -e));
+      return vec2(n3 - n4, n2 - n1) / (2.0 * e);
+  }
+  
+  vec3 cqftMotion(vec3 pos, float t, float seed, float mass) {
+      // CQFT-inspired motion: φ-spiral + critical fluctuations
+      float angle = t * 0.4 + seed * 6.28318;
+      float radius = 1.0 + sin(t * 0.25 + seed * 2.0) * 0.3;
+      float spiralAngle = angle * PHI + length(pos.xz) * 0.08;
+      float spiralRadius = radius * (1.0 + t * 0.03 * u_speed);
+      
+      // Mass-dependent behavior (critical point dynamics)
+      float critical = (1.0 - mass) * 2.0; // Enhanced motion near m²=0
+      vec3 spiral = vec3(
+          cos(spiralAngle) * spiralRadius,
+          sin(t * 0.3 + seed) * 1.5 * critical,
+          sin(spiralAngle) * spiralRadius
+      );
+      
+      return spiral;
+  }
+  
+  void main() {
+      v_base = position;
+      v_mass = a_mass;
+      
+      float t = u_time * 0.6 * u_speed;
+      vec2 pXZ = position.xz * 0.015 + vec2(a_seed * 0.008);
+      float n = fbm(pXZ * 2.5 + t * 0.15);
+      vec2 c = curl2(pXZ * 1.8 + t * 0.12);
+      
+      vec3 cqft = cqftMotion(position, t + a_seed * 0.05, a_seed, a_mass);
+      
+      float pulse = sin(t * 1.5 + a_seed * 8.0) * 0.5 + 0.5;
+      float burstPhase = mod(t * 0.8 + a_seed * 4.0, 6.28318);
+      float burst = smoothstep(0.0, 1.2, burstPhase) * (1.0 - smoothstep(3.5, 6.28318, burstPhase));
+      
+      // CQFT coupling effects
+      float coupling = G_STAR * (n + burst) * 0.5;
+      vec3 radialExpand = normalize(position) * burst * 12.0 * pulse * coupling;
+      
+      vec3 off = vec3(c.x, 0.0, c.y) * 2.0 * n;
+      off += cqft * u_spread;
+      off += radialExpand * u_spread * u_field_strength;
+      
+      // Anomalous dimension effects
+      float waveK = length(position.xz) * 0.04;
+      float omega = waveK / pow(1.0 + waveK * waveK / (PHI * PHI), ETA);
+      off.y += sin(omega * t - waveK * 8.0) * 1.5 * n;
+      
+      vec3 newPos = position + off * 0.12;
+      vec4 mvPosition = modelViewMatrix * vec4(newPos, 1.0);
+      float distFactor = 80.0 / length(mvPosition.xyz);
+      
+      gl_PointSize = (1.5 + 3.0 * n + burst * 2.5 + coupling * 4.0) * distFactor;
+      gl_Position = projectionMatrix * mvPosition;
+      v_life = (n * 0.6 + burst * 0.4 + coupling) * u_field_strength;
+  }
 `;
-const pFrag=`
+
+const pFrag = `
   precision highp float;
   varying float v_life;
+  varying float v_mass;
   varying vec3 v_base;
   #define PHI 1.618034
-  void main(){vec2 uv=gl_PointCoord.xy-0.5;float r=length(uv);float alpha=smoothstep(0.5,0.1,r)*smoothstep(0.0,0.15,r);float core=smoothstep(0.25,0.0,r);float angle=atan(v_base.z,v_base.x);float h=mod(angle/6.28318*PHI+v_life*0.8+length(v_base.xz)*0.01,1.0);vec3 col=vec3(0.5+0.5*cos(6.28318*(h+0.0)),0.5+0.5*cos(6.28318*(h+0.33)),0.5+0.5*cos(6.28318*(h+0.66)));col*=0.8+v_life*1.5+core*2.0;gl_FragColor=vec4(col,alpha*(0.7+v_life*0.4));}
+  #define ETA 0.809017
+  
+  void main() {
+      vec2 uv = gl_PointCoord.xy - 0.5;
+      float r = length(uv);
+      float alpha = smoothstep(0.5, 0.1, r) * smoothstep(0.0, 0.2, r);
+      float core = smoothstep(0.3, 0.0, r);
+      
+      float angle = atan(v_base.z, v_base.x);
+      float h = mod(angle / 6.28318 * PHI + v_life * 0.6 + length(v_base.xz) * 0.008, 1.0);
+      
+      // Color based on mass parameter and CQFT state
+      vec3 col;
+      if(v_mass < 0.1) {
+          // Critical mass particles (gold/amber)
+          col = vec3(
+              0.8 + 0.2 * cos(6.28318 * (h + 0.0)),
+              0.6 + 0.4 * cos(6.28318 * (h + 0.1)),
+              0.3 + 0.2 * cos(6.28318 * (h + 0.3))
+          );
+      } else {
+          // Massive particles (blue/purple)
+          col = vec3(
+              0.4 + 0.3 * cos(6.28318 * (h + 0.5)),
+              0.5 + 0.4 * cos(6.28318 * (h + 0.6)),
+              0.8 + 0.2 * cos(6.28318 * (h + 0.2))
+          );
+      }
+      
+      col *= 0.7 + v_life * 1.8 + core * 2.5;
+      alpha *= 0.8 + v_life * 0.6;
+      
+      gl_FragColor = vec4(col, alpha);
+  }
 `;
-const pMat=new THREE.ShaderMaterial({vertexShader:pVert,fragmentShader:pFrag,transparent:true,depthWrite:false,uniforms:{u_time:{value:0.0},u_spread:{value:1.2},u_speed:{value:1.0}},blending:THREE.AdditiveBlending});
-const particles=new THREE.Points(pGeo,pMat);
+
+const pMat = new THREE.ShaderMaterial({
+    vertexShader: pVert,
+    fragmentShader: pFrag,
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+        u_time: { value: 0.0 },
+        u_spread: { value: 1.0 },
+        u_speed: { value: 1.0 },
+        u_field_strength: { value: 1.0 }
+    },
+    blending: THREE.AdditiveBlending
+});
+
+const particles = new THREE.Points(pGeo, pMat);
 scene.add(particles);
-function makeTubeFromPoints(points,radius=0.9,radialSegments=isMobile?4:6){const curve=new THREE.CatmullRomCurve3(points);const tubularSegments=Math.max(isMobile?8:12,Math.floor(points.length*(isMobile?2:4)));return new THREE.TubeBufferGeometry(curve,tubularSegments,radius,radialSegments,false);}
-const filamentsGroup=new THREE.Group();
+
+// Enhanced filament tree with CQFT branching logic
+function makeTubeFromPoints(points, radius = 0.8, radialSegments = isMobile ? 4 : 8) {
+    const curve = new THREE.CatmullRomCurve3(points);
+    const tubularSegments = Math.max(isMobile ? 10 : 16, Math.floor(points.length * (isMobile ? 1.5 : 3)));
+    return new THREE.TubeBufferGeometry(curve, tubularSegments, radius, radialSegments, false);
+}
+
+const filamentsGroup = new THREE.Group();
 scene.add(filamentsGroup);
-function createFilamentTree(maxLevels=isMobile?4:5){while(filamentsGroup.children.length){const c=filamentsGroup.children[0];filamentsGroup.remove(c);if(c.geometry)c.geometry.dispose();if(c.material)c.material.dispose();}const tips=[];function recurse(parentPos,level,angleOffset,seed=0){if(level>Math.floor(maxLevels))return;const length=26*Math.pow(1/φ,level)*(0.85+Math.random()*0.2);const seg=20;const pts=[];for(let i=0;i<=seg;i++){const t=i/seg;const x=parentPos.x+t*length*Math.cos(angleOffset+t*goldenAngle*eta+seed*0.01);const y=parentPos.y+t*length*Math.sin(angleOffset+t*goldenAngle*eta+seed*0.01);const z=parentPos.z+t*length*0.65+level*1.2;pts.push(new THREE.Vector3(x,y,z));}const geo=makeTubeFromPoints(pts,Math.max(0.5,1.2-level*0.10),isMobile?4:6);const mat=new THREE.MeshStandardMaterial({color:new THREE.Color().setHSL((level*0.08+0.05)%1,0.6,0.45),emissive:new THREE.Color(0x102244),roughness:0.28,metalness:0.03,side:THREE.DoubleSide});const mesh=new THREE.Mesh(geo,mat);mesh.userData.level=level;mesh.userData.seed=seed;filamentsGroup.add(mesh);tips.push(pts[pts.length-1].clone());const childCount=2+Math.floor(PhiStar*3);for(let i=0;i<childCount;i++){const ang=angleOffset+(i-(childCount-1)/2)*(0.8+Math.random()*0.6);recurse(pts[pts.length-1],level+1,ang,seed+i*7);}}recurse(new THREE.Vector3(0,-6,0),0,0,Math.floor(Math.random()*999));return tips;}
-let complexity=isMobile?4:5;
-let tips=createFilamentTree(complexity);
-const ambient=new THREE.AmbientLight(0x334466,0.6);
+
+function createFilamentTree(maxLevels = isMobile ? 4 : 6) {
+    // Clear existing filaments
+    while(filamentsGroup.children.length) {
+        const c = filamentsGroup.children[0];
+        filamentsGroup.remove(c);
+        if(c.geometry) c.geometry.dispose();
+        if(c.material) c.material.dispose();
+    }
+
+    const tips = [];
+    let branchCount = 0;
+
+    function recurse(parentPos, level, angleOffset, seed = 0, parentMass = 0) {
+        if(level > Math.floor(maxLevels)) return;
+        
+        // CQFT-inspired branching: φ-based probabilities
+        const length = 22 * Math.pow(1/φ, level) * (0.8 + Math.random() * 0.3);
+        const segments = 18 + Math.floor(level * 2);
+        const pts = [];
+        
+        // Current mass evolves toward critical point
+        const currentMass = parentMass * 0.7 + (Math.random() * 0.3);
+        
+        for(let i = 0; i <= segments; i++) {
+            const t = i / segments;
+            // φ-spiral growth with CQFT fluctuations
+            const spiral = t * goldenAngle * eta;
+            const fluctuation = Math.sin(t * segments * 0.3 + seed) * (1.0 - currentMass) * 0.4;
+            
+            const x = parentPos.x + t * length * Math.cos(angleOffset + spiral + fluctuation);
+            const y = parentPos.y + t * length * Math.sin(angleOffset + spiral * 1.1 + fluctuation);
+            const z = parentPos.z + t * length * 0.7 + level * 0.8;
+            
+            pts.push(new THREE.Vector3(x, y, z));
+        }
+        
+        const radius = Math.max(0.3, 1.0 - level * 0.12) * (1.0 + currentMass * 0.5);
+        const geo = makeTubeFromPoints(pts, radius, isMobile ? 4 : 8);
+        
+        // Material based on CQFT state
+        const hue = (level * 0.07 + currentMass * 0.1) % 1.0;
+        const saturation = 0.7 - currentMass * 0.3;
+        const lightness = 0.5 - currentMass * 0.2;
+        
+        const mat = new THREE.MeshStandardMaterial({
+            color: new THREE.Color().setHSL(hue, saturation, lightness),
+            emissive: new THREE.Color().setHSL(hue, 0.8, 0.3),
+            roughness: 0.25,
+            metalness: 0.1,
+            side: THREE.DoubleSide
+        });
+        
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.userData.level = level;
+        mesh.userData.seed = seed;
+        mesh.userData.mass = currentMass;
+        mesh.userData.points = pts;
+        
+        filamentsGroup.add(mesh);
+        branchCount++;
+        tips.push(pts[pts.length-1].clone());
+        
+        // CQFT branching: probability decreases with φ
+        const branchProbability = Math.pow(1/φ, level) * (1.0 - currentMass * 0.5);
+        
+        if(Math.random() < branchProbability && level < maxLevels - 1) {
+            const childCount = 1 + Math.floor(PhiStar * 4 * branchProbability);
+            for(let i = 0; i < childCount; i++) {
+                const angle = angleOffset + (i - (childCount-1)/2) * (0.6 + Math.random() * 0.8);
+                recurse(pts[pts.length-1], level + 1, angle, seed + i * 13, currentMass);
+            }
+        }
+    }
+    
+    // Start with central trunk representing the quantum vacuum
+    recurse(new THREE.Vector3(0, -4, 0), 0, 0, Math.floor(Math.random() * 999), 0.1);
+    
+    console.log(`Created CQFT consciousness lattice with ${branchCount} branches`);
+    return tips;
+}
+
+let complexity = isMobile ? 4 : 6;
+let tips = createFilamentTree(complexity);
+
+// Enhanced lighting
+const ambient = new THREE.AmbientLight(0x334466, 0.5);
 scene.add(ambient);
-const pLight=new THREE.PointLight(0xffffff,0.6,500);
-pLight.position.set(0,10,40);
+
+const pLight = new THREE.PointLight(0xffffff, 0.8, 300);
+pLight.position.set(0, 15, 50);
 scene.add(pLight);
-const brightFrag=`precision highp float;uniform sampler2D t;uniform float threshold;varying vec2 vUv;void main(){vec3 c=texture2D(t,vUv).rgb;vec3 outc=max(vec3(0.0),c-threshold);gl_FragColor=vec4(outc,1.0);}`;
-const brightMat=new THREE.ShaderMaterial({fragmentShader:brightFrag,vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position,1.0);}`,uniforms:{t:{value:null},threshold:{value:0.15}},depthWrite:false});
-const brightQuad=new THREE.Mesh(quadGeo,brightMat);
-const blurFrag=`precision highp float;uniform sampler2D t;uniform vec2 direction;varying vec2 vUv;void main(){vec2 uv=vUv;float w[5];w[0]=0.204164;w[1]=0.304005;w[2]=0.093913;w[3]=0.012;w[4]=0.0009;vec3 c=texture2D(t,uv).rgb*w[0];for(int i=1;i<5;i++){c+=texture2D(t,uv+direction*float(i)/512.0).rgb*w[i];c+=texture2D(t,uv-direction*float(i)/512.0).rgb*w[i];}gl_FragColor=vec4(c,1.0);}`;
-const blurMat=new THREE.ShaderMaterial({fragmentShader:blurFrag,vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position,1.0);}`,uniforms:{t:{value:null},direction:{value:new THREE.Vector2(1.0,0.0)}},depthWrite:false});
-const blurQuad=new THREE.Mesh(quadGeo,blurMat);
-const compFrag=`precision highp float;uniform sampler2D sceneTex;uniform sampler2D bloomTex;uniform float bloomStrength;varying vec2 vUv;void main(){vec3 sc=texture2D(sceneTex,vUv).rgb;vec3 b=texture2D(bloomTex,vUv).rgb;vec3 outc=sc+b*bloomStrength;outc=outc/(outc+vec3(1.0));outc=pow(outc,vec3(1.0/2.2));gl_FragColor=vec4(outc,1.0);}`;
-const compMat=new THREE.ShaderMaterial({fragmentShader:compFrag,vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position,1.0);}`,uniforms:{sceneTex:{value:null},bloomTex:{value:null},bloomStrength:{value:1.8}},depthWrite:false});
-const compQuad=new THREE.Mesh(quadGeo,compMat);
-const guiContainer=document.getElementById('ui');
-const gui=new dat.GUI({autoPlace:false,width:300});
+
+const pLight2 = new THREE.PointLight(0xffaa33, 0.4, 200);
+pLight2.position.set(20, 5, 30);
+scene.add(pLight2);
+
+// Post-processing shaders (same as before but optimized)
+const brightFrag = `precision highp float;uniform sampler2D t;uniform float threshold;varying vec2 vUv;void main(){vec3 c=texture2D(t,vUv).rgb;vec3 outc=max(vec3(0.0),c-threshold);gl_FragColor=vec4(outc,1.0);}`;
+const brightMat = new THREE.ShaderMaterial({fragmentShader: brightFrag, vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position,1.0);}`, uniforms: {t: {value: null}, threshold: {value: 0.12}}, depthWrite: false});
+
+const blurFrag = `precision highp float;uniform sampler2D t;uniform vec2 direction;varying vec2 vUv;void main(){vec2 uv=vUv;float w[5];w[0]=0.227027;w[1]=0.316216;w[2]=0.070270;w[3]=0.008;w[4]=0.0005;vec3 c=texture2D(t,uv).rgb*w[0];for(int i=1;i<5;i++){c+=texture2D(t,uv+direction*float(i)/512.0).rgb*w[i];c+=texture2D(t,uv-direction*float(i)/512.0).rgb*w[i];}gl_FragColor=vec4(c,1.0);}`;
+const blurMat = new THREE.ShaderMaterial({fragmentShader: blurFrag, vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position,1.0);}`, uniforms: {t: {value: null}, direction: {value: new THREE.Vector2(1.0,0.0)}}, depthWrite: false});
+
+const compFrag = `precision highp float;uniform sampler2D sceneTex;uniform sampler2D bloomTex;uniform float bloomStrength;varying vec2 vUv;void main(){vec3 sc=texture2D(sceneTex,vUv).rgb;vec3 b=texture2D(bloomTex,vUv).rgb;vec3 outc=sc+b*bloomStrength;outc=outc/(outc+vec3(1.0));outc=pow(outc,vec3(1.0/2.2));gl_FragColor=vec4(outc,1.0);}`;
+const compMat = new THREE.ShaderMaterial({fragmentShader: compFrag, vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position,1.0);}`, uniforms: {sceneTex: {value: null}, bloomTex: {value: null}, bloomStrength: {value: 1.5}}, depthWrite: false});
+
+const brightQuad = new THREE.Mesh(quadGeo, brightMat);
+const blurQuad = new THREE.Mesh(quadGeo, blurMat);
+const compQuad = new THREE.Mesh(quadGeo, compMat);
+
+// Enhanced GUI with CQFT parameters
+const guiContainer = document.getElementById('ui');
+const gui = new dat.GUI({autoPlace: false, width: 280});
 guiContainer.appendChild(gui.domElement);
-const settings={fractalSpeed:1.0,particleSpread:1.2,particleSpeed:1.0,bloomThreshold:isMobile?0.22:0.15,bloomStrength:isMobile?1.2:1.8,blurPasses:isMobile?1:2,complexity:complexity,fieldStrength:1.0,record:false};
-gui.add(settings,'fractalSpeed',0.1,3.0).name('Field Speed');
-gui.add(settings,'particleSpread',0.3,3.0).name('Particle Spread').onChange(v=>pMat.uniforms.u_spread.value=v);
-gui.add(settings,'particleSpeed',0.1,3.0).name('Particle Speed').onChange(v=>pMat.uniforms.u_speed.value=v);
-gui.add(settings,'fieldStrength',0.5,2.0).name('Field Strength');
-gui.add(settings,'bloomThreshold',0.0,0.5).name('Bloom Threshold').onChange(v=>brightMat.uniforms.threshold.value=v);
-gui.add(settings,'bloomStrength',0.5,3.0).name('Bloom Strength').onChange(v=>compMat.uniforms.bloomStrength.value=v);
-gui.add(settings,'blurPasses',0,3,1).name('Blur Quality');
-gui.add(settings,'complexity',3,10,1).name('Tree Complexity').onChange(v=>{complexity=v;tips=createFilamentTree(complexity);});
-gui.add(settings,'record').name('Record WebM');
-function onResize(){const w=window.innerWidth,h=window.innerHeight;renderer.setSize(w,h);const bloomDiv=isMobile?6:4;const blurDiv=isMobile?12:8;rtScene=makeRT(w,h);rtBright=makeRT(Math.floor(w/bloomDiv),Math.floor(h/bloomDiv));rtBlurA=makeRT(Math.floor(w/blurDiv),Math.floor(h/blurDiv));rtBlurB=makeRT(Math.floor(w/blurDiv),Math.floor(h/blurDiv));bgMat.uniforms.u_res.value.set(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();}
-window.addEventListener('resize',onResize);
-function compositeAndBloom(){renderer.setRenderTarget(rtScene);renderer.clear();bgMat.uniforms.u_time.value=clock.getElapsedTime()*settings.fractalSpeed;renderer.render(quadScene,quadCam);renderer.render(scene,camera);brightMat.uniforms.t.value=rtScene.texture;quadScene.add(brightQuad);renderer.setRenderTarget(rtBright);renderer.clear();renderer.render(quadScene,quadCam);quadScene.remove(brightQuad);const passes=Math.max(0,Math.floor(settings.blurPasses));let src=rtBright,dst=rtBlurA;for(let i=0;i<passes;i++){blurMat.uniforms.t.value=src.texture;blurMat.uniforms.direction.value.set(1.0,0.0);quadScene.add(blurQuad);renderer.setRenderTarget(dst);renderer.clear();renderer.render(quadScene,quadCam);quadScene.remove(blurQuad);let tmp=src;src=dst;dst=tmp;blurMat.uniforms.t.value=src.texture;blurMat.uniforms.direction.value.set(0.0,1.0);quadScene.add(blurQuad);renderer.setRenderTarget(dst);renderer.clear();renderer.render(quadScene,quadCam);quadScene.remove(blurQuad);src=dst;dst=(src===rtBlurA)?rtBlurB:rtBlurA;}compMat.uniforms.sceneTex.value=rtScene.texture;compMat.uniforms.bloomTex.value=src.texture;compMat.uniforms.bloomStrength.value=settings.bloomStrength;quadScene.add(compQuad);renderer.setRenderTarget(null);renderer.clear();renderer.render(quadScene,quadCam);quadScene.remove(compQuad);}
-const clock=new THREE.Clock();
-let frame=0;
-const targetFPS=isMobile?30:60;
-const frameInterval=1000/targetFPS;
-let lastFrameTime=0;
-function animate(currentTime){requestAnimationFrame(animate);if(isMobile&&currentTime-lastFrameTime<frameInterval){return;}lastFrameTime=currentTime;const t=clock.getElapsedTime();frame++;pMat.uniforms.u_time.value=t*settings.fractalSpeed;pMat.uniforms.u_spread.value=settings.particleSpread;pMat.uniforms.u_speed.value=settings.particleSpeed;bgMat.uniforms.u_time.value=t*settings.fractalSpeed;if(!isMobile){filamentsGroup.children.forEach((m)=>{const s=m.userData.seed||0;const lev=m.userData.level||0;m.rotation.z=0.003*Math.sin(t*0.8+s*0.15)*settings.fieldStrength;m.rotation.x=0.002*Math.cos(t*0.5+s*0.09)*settings.fieldStrength;m.rotation.y=0.001*Math.sin(t*0.3+s*0.06)*settings.fieldStrength;if(m.material&&m.material.emissive){const pulse=0.12+0.18*Math.sin(t*1.2+s*0.12+lev*φ);m.material.emissiveIntensity=(0.7+pulse)*settings.fieldStrength;const hue=((t*0.05+lev*0.08+s*0.01)%1.0);m.material.color.setHSL(hue,0.65,0.5);m.material.emissive.setHSL(hue,0.8,0.25);}});}scene.fog.density=0.0015+0.003*Math.sin(t*0.06);compositeAndBloom();}
-animate();
-let recorder=null,recordedChunks=[];
-function startRecorder(){recordedChunks=[];const stream=renderer.domElement.captureStream(60);recorder=new MediaRecorder(stream,{mimeType:'video/webm; codecs=vp9'});recorder.ondataavailable=e=>{if(e.data&&e.data.size)recordedChunks.push(e.data);};recorder.onstop=()=>{const blob=new Blob(recordedChunks,{type:'video/webm'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`quantum_field_${Date.now()}.webm`;a.click();URL.revokeObjectURL(url);};recorder.start();document.getElementById('status').innerText='Recording...';}
-function stopRecorder(){if(!recorder)return;recorder.stop();recorder=null;document.getElementById('status').innerText='Recording saved';}
-setInterval(()=>{if(settings.record&&!recorder)startRecorder();if(!settings.record&&recorder)stopRecorder();},200);
-let fpsFrame=0,fpsLast=performance.now();
-setInterval(()=>{fpsFrame++;const now=performance.now();if(now-fpsLast>=500){const fps=Math.round(fpsFrame*1000/(now-fpsLast));fpsFrame=0;fpsLast=now;document.getElementById('status').innerText=`${fps} FPS | ${PARTICLE.count} particles | α=φ=${φ.toFixed(3)}`;}},250);
-window.addEventListener('keydown',(e)=>{if(e.code==='Space'){settings.record=!settings.record;gui.updateDisplay();}if(e.key==='r'){tips=createFilamentTree(complexity);}if(e.key==='b'){settings.blurPasses=Math.max(0,settings.blurPasses-1);gui.updateDisplay();}if(e.key==='B'){settings.blurPasses=Math.min(3,settings.blurPasses+1);gui.updateDisplay();}});
-document.getElementById('status').innerText=`Ready | ${isMobile?'mobile':'desktop'} | ${PARTICLE.count} particles`;
-</script>
-</body>
-</html>
+
+const settings = {
+    fractalSpeed: 1.0,
+    particleSpread: 1.0,
+    particleSpeed: 1.0,
+    fieldStrength: 1.0,
+    bloomThreshold: isMobile ? 0.15 : 0.12,
+    bloomStrength: isMobile ? 1.2 : 1.5,
+    blurPasses: isMobile ? 1 : 2,
+    complexity: complexity,
+    latticeSpeed: 1.0,
+    record: false,
+    showTheory: true
+};
+
+gui.add(settings, 'fractalSpeed', 0.1, 3.0).name('Field Speed');
+gui.add(settings, 'particleSpread', 0.2, 2.5).name('Particle Spread').onChange(v => pMat.uniforms.u_spread.value = v);
+gui.add(settings, 'particleSpeed', 0.1, 2.5).name('Particle Speed').onChange(v => pMat.uniforms.u_speed.value = v);
+gui.add(settings, 'fieldStrength', 0.3, 2.0).name('Field Strength').onChange(v => {
+    pMat.uniforms.u_field_strength.value = v;
+    bgMat.uniforms.u_field_strength.value = v;
+});
+gui.add(settings, 'latticeSpeed', 0.1, 2.0).name('Lattice Motion');
+gui.add(settings, 'bloomThreshold', 0.0, 0.4).name('Bloom Threshold').onChange(v => brightMat.uniforms.threshold.value = v);
+gui.add(settings, 'bloomStrength', 0.5, 2.5).name('Bloom Strength').onChange(v => compMat.uniforms.bloomStrength.value = v);
+gui.add(settings, 'blurPasses', 0, 3, 1).name('Blur Quality');
+gui.add(settings, 'complexity', 3, 8, 1).name('Lattice Depth').onChange(v => {
+    complexity = v;
+    tips = createFilamentTree(complexity);
+});
+gui.add(settings, 'showTheory').name('Show Theory').onChange(toggleTheory);
+gui.add(settings, 'record').name('Record WebM');
+
+function onResize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h);
+    const bloomDiv = isMobile ? 8 : 4;
+    const blurDiv = isMobile ? 16 : 8;
+    rtScene = makeRT(w, h);
+    rtBright = makeRT(Math.floor(w/bloomDiv), Math.floor(h/bloomDiv));
+    rtBlurA = makeRT(Math.floor(w/blurDiv), Math.floor(h/blurDiv));
+    rtBlurB = makeRT(Math.floor(w/blurDiv), Math.floor(h/blurDiv));
+    bgMat.uniforms.u_res.value.set(w, h);
+    camera.aspect = w/h;
+    camera.updateProjectionMatrix();
+}
+
+window.addEventListener('resize', onResize);
+
+function compositeAndBloom() {
+    renderer.setRenderTarget(rtScene);
+    renderer.clear();
+    bgMat.uniforms.u_time.value = clock.getElapsedTime() * settings.fractalSpeed;
+    renderer.render(quadScene, quadCam);
+    renderer.render(scene, camera);
+    
+    brightMat.uniforms.t.value = rtScene.texture;
+    quadScene.add(brightQuad);
+    renderer.setRenderTarget(rtBright);
+    renderer.clear();
+    renderer.render(quadScene, quadCam);
+    quadScene.remove(brightQuad);
+    
+    const passes = Math.max(0, Math.floor(settings.blurPasses));
+    let src = rtBright, dst = rtBlurA;
+    
+    for(let i = 0; i < passes; i++) {
+        blurMat.uniforms.t.value = src.texture;
+        blurMat.uniforms.direction.value.set(1.0, 0.0);
+        quadScene.add(blurQuad);
+        renderer.setRenderTarget(dst);
+        renderer.clear();
+        renderer.render(quadScene, quadCam);
+        quadScene.remove(blurQuad);
+        
+        let tmp = src; src = dst; dst = tmp;
+        
+        blurMat.uniforms.t.value = src.texture;
+        blurMat.uniforms.direction.value.set(0.0, 1.0);
+        quadScene.add(blurQuad);
+        renderer.setRenderTarget(dst);
+        renderer.clear();
+        renderer.render(quadScene, quadCam);
+        quadScene.remove(blurQuad);
+        
+        src = dst;
+        dst = (src === rtBlurA) ? rtBlurB : rtBlurA;
+    }
+    
+    compMat.uniforms.sceneTex.value =
