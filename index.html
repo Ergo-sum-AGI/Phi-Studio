@@ -177,4 +177,388 @@ const pVert = `
   void main(){
     v_base = position;
     // work in 2D field (x,z) for swirling
-    vec2 pXZ = position.xz * 0.03 + u_time * 0.02 * u_*
+    vec2 pXZ = position.xz * 0.03 + u_time * 0.02 * u_speed + vec2(a_seed*0.003, a_seed*0.002);
+    float n = fbm(pXZ * 4.0);
+    vec2 c = curl2(pXZ * 1.6);
+    // radial swirl + vertical bob
+    vec3 off = vec3(c.x, sin(u_time*0.4 + a_seed*0.01) * 1.4 * n, c.y) * (1.2 + 2.0 * n);
+    // add slow outward drift and tiny random jitter
+    off += vec3(0.0, sin(a_seed*0.1 + u_time*0.2)*0.06, 0.0);
+    vec3 newPos = position + off * u_spread * 0.04;
+    // small orbiting
+    newPos.xz += vec2(sin(u_time*0.3 + a_seed)*0.6, cos(u_time*0.25 + a_seed*0.6)*0.6);
+
+    vec4 mvPosition = modelViewMatrix * vec4(newPos, 1.0);
+    gl_PointSize = 1.8 + 2.6 * n; // size varies with noise
+    gl_Position = projectionMatrix * mvPosition;
+    v_life = n;
+  }
+`;
+
+const pFrag = `
+  precision highp float;
+  varying float v_life;
+  varying vec3 v_base;
+  void main() {
+    // circular point
+    vec2 uv = gl_PointCoord.xy - 0.5;
+    float r = length(uv);
+    float alpha = smoothstep(0.45, 0.2, r);
+    // color by base pos + life
+    float h = mod((v_base.y*0.07 + v_life*0.6 + 0.7), 1.0);
+    vec3 col = vec3(0.5 + 0.5*cos(6.28318*(vec3(h, h+0.33, h+0.66))));
+    gl_FragColor = vec4(col * (0.6 + v_life*0.9), alpha * (0.6 + v_life*0.5));
+  }
+`;
+
+const pMat = new THREE.ShaderMaterial({
+  vertexShader: pVert,
+  fragmentShader: pFrag,
+  transparent: true,
+  depthWrite: false,
+  uniforms: {
+    u_time: { value: 0.0 },
+    u_spread: { value: 1.0 },
+    u_speed: { value: 1.0 }
+  },
+  blending: THREE.AdditiveBlending
+});
+const particles = new THREE.Points(pGeo, pMat);
+scene.add(particles);
+
+/* ======================
+   Tube filaments (organic spirals)
+   ====================== */
+function makeTubeFromPoints(points, radius = 0.9, radialSegments = 8) {
+  const curve = new THREE.CatmullRomCurve3(points);
+  const tubularSegments = Math.max(16, Math.floor(points.length * 6));
+  return new THREE.TubeBufferGeometry(curve, tubularSegments, radius, radialSegments, false);
+}
+
+const filamentsGroup = new THREE.Group();
+scene.add(filamentsGroup);
+
+function createFilamentTree(maxLevels = 6) {
+  // clear
+  while (filamentsGroup.children.length) {
+    const c = filamentsGroup.children[0];
+    filamentsGroup.remove(c);
+    if (c.geometry) c.geometry.dispose();
+    if (c.material) c.material.dispose();
+  }
+
+  const tips = [];
+  function recurse(parentPos, level, angleOffset, seed=0) {
+    if (level > Math.floor(maxLevels)) return;
+    const length = 26 * Math.pow(1/φ, level) * (0.85 + Math.random()*0.2);
+    const seg = 20;
+    const pts = [];
+    for (let i=0;i<=seg;i++){
+      const t = i/seg;
+      const x = parentPos.x + t*length*Math.cos(angleOffset + t*goldenAngle*eta + seed*0.01);
+      const y = parentPos.y + t*length*Math.sin(angleOffset + t*goldenAngle*eta + seed*0.01);
+      const z = parentPos.z + t*length*0.65 + level*1.2;
+      pts.push(new THREE.Vector3(x,y,z));
+    }
+    const geo = makeTubeFromPoints(pts, Math.max(0.6, 1.2 - level*0.10), 10);
+    const mat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color().setHSL((level*0.08+0.05)%1, 0.6, 0.45),
+      emissive: new THREE.Color(0x102244),
+      roughness: 0.28,
+      metalness: 0.03,
+      side: THREE.DoubleSide
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.userData.level = level;
+    mesh.userData.seed = seed;
+    filamentsGroup.add(mesh);
+    tips.push(pts[pts.length-1].clone());
+
+    const childCount = 2 + Math.floor(PhiStar*3);
+    for (let i=0;i<childCount;i++){
+      const ang = angleOffset + (i - (childCount-1)/2) * (0.8 + Math.random()*0.6);
+      recurse(pts[pts.length-1], level+1, ang, seed + i*7);
+    }
+  }
+  recurse(new THREE.Vector3(0,-6,0), 0, 0, Math.floor(Math.random()*999));
+  return tips;
+}
+let complexity = 6;
+let tips = createFilamentTree(complexity);
+
+/* add subtle lights */
+const ambient = new THREE.AmbientLight(0x334466, 0.6); scene.add(ambient);
+const pLight = new THREE.PointLight(0xffffff, 0.6, 500); pLight.position.set(0,10,40); scene.add(pLight);
+
+/* ======================
+   Fullscreen-pass materials (bright pass, blur)
+   ====================== */
+// bright-pass: extract bright areas
+const brightFrag = `
+  precision highp float;
+  uniform sampler2D t;
+  uniform float threshold;
+  varying vec2 vUv;
+  void main(){
+    vec3 c = texture2D(t, vUv).rgb;
+    float lum = dot(c, vec3(0.2126,0.7152,0.0722));
+    vec3 outc = max(vec3(0.0), c - threshold);
+    gl_FragColor = vec4(outc, 1.0);
+  }
+`;
+const brightMat = new THREE.ShaderMaterial({
+  fragmentShader: brightFrag,
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position,1.0); }`,
+  uniforms: { t: { value: null }, threshold: { value: 0.18 } },
+  depthWrite: false
+});
+const brightQuad = new THREE.Mesh(quadGeo, brightMat);
+
+// Gaussian blur (separable) horizontal / vertical
+const blurFrag = `
+  precision highp float;
+  uniform sampler2D t;
+  uniform vec2 direction;
+  varying vec2 vUv;
+  void main(){
+    vec2 uv = vUv;
+    float w[5];
+    w[0]=0.204164; w[1]=0.304005; w[2]=0.093913; w[3]=0.012; w[4]=0.0009;
+    vec3 c = texture2D(t, uv).rgb * w[0];
+    for(int i=1;i<5;i++){
+      c += texture2D(t, uv + direction * float(i) / 512.0).rgb * w[i];
+      c += texture2D(t, uv - direction * float(i) / 512.0).rgb * w[i];
+    }
+    gl_FragColor = vec4(c,1.0);
+  }
+`;
+const blurMat = new THREE.ShaderMaterial({
+  fragmentShader: blurFrag,
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position,1.0); }`,
+  uniforms: { t: { value: null }, direction: { value: new THREE.Vector2(1.0, 0.0) } },
+  depthWrite: false
+});
+const blurQuad = new THREE.Mesh(quadGeo, blurMat);
+
+// composite (additive)
+const compFrag = `
+  precision highp float;
+  uniform sampler2D sceneTex;
+  uniform sampler2D bloomTex;
+  varying vec2 vUv;
+  void main(){
+    vec3 sc = texture2D(sceneTex, vUv).rgb;
+    vec3 b = texture2D(bloomTex, vUv).rgb;
+    vec3 outc = sc + b * 1.4; // bloom strength
+    // tone mapping and gamma
+    outc = outc / (outc + vec3(1.0));
+    outc = pow(outc, vec3(1.0/2.2));
+    gl_FragColor = vec4(outc, 1.0);
+  }
+`;
+const compMat = new THREE.ShaderMaterial({
+  fragmentShader: compFrag,
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position,1.0); }`,
+  uniforms: { sceneTex: { value: null }, bloomTex: { value: null } },
+  depthWrite: false
+});
+const compQuad = new THREE.Mesh(quadGeo, compMat);
+
+/* ======================
+   GUI + controls
+   ====================== */
+const guiContainer = document.getElementById('ui');
+const gui = new dat.GUI({ autoPlace: false, width: 300 });
+guiContainer.appendChild(gui.domElement);
+
+const settings = {
+  fractalSpeed: 1.0,
+  fractalScale: 1.0,
+  particleSpread: 1.0,
+  particleSpeed: 1.0,
+  bloomThreshold: 0.18,
+  bloomStrength: 1.4,
+  blurPasses: 2,
+  complexity: complexity,
+  record: false
+};
+gui.add(settings, 'fractalSpeed', 0.1, 3.0).name('Fractal Speed');
+gui.add(settings, 'fractalScale', 0.3, 3.0).name('Fractal Scale');
+gui.add(settings, 'particleSpread', 0.3, 2.5).name('Particle Spread').onChange(v=>pMat.uniforms.u_spread.value = v);
+gui.add(settings, 'particleSpeed', 0.1, 3.0).name('Particle Speed').onChange(v=>pMat.uniforms.u_speed.value = v);
+gui.add(settings, 'bloomThreshold', 0.0, 1.0).name('Bloom Threshold').onChange(v=>brightMat.uniforms.threshold.value = v);
+gui.add(settings, 'bloomStrength', 0.0, 3.0).name('Bloom Strength');
+gui.add(settings, 'blurPasses', 0, 4, 1).name('Blur Passes');
+gui.add(settings, 'complexity', 3, 10, 1).name('Complexity').onChange(v=>{
+  complexity = v; tips = createFilamentTree(complexity);
+});
+gui.add(settings, 'record').name('Record WebM');
+
+document.getElementById('status').innerText = 'Status: ready';
+
+/* ======================
+   Resize handler
+   ====================== */
+function onResize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h);
+  rtScene.setSize(w, h);
+  rtBright = makeRT(Math.floor(w/2), Math.floor(h/2));
+  rtBlurA = makeRT(Math.floor(w/4), Math.floor(h/4));
+  rtBlurB = makeRT(Math.floor(w/4), Math.floor(h/4));
+  bgMat.uniforms.u_res.value.set(w, h);
+  camera.aspect = w/h; camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', onResize);
+
+/* ======================
+   Animation loop + passes
+   ====================== */
+let clock = new THREE.Clock();
+let frame = 0;
+
+function renderPasses() {
+  // 1) render full scene to rtScene
+  renderer.setRenderTarget(rtScene);
+  renderer.clear();
+  renderer.render(scene, camera);
+
+  // 2) render background fractal into rtScene as overlay? (we have fractal fullscreen quad in quadScene)
+  // Instead, render background separately first into rtScene by drawing quadScene then scene on top.
+  // We'll composite: render background into rtScene (clear), then render scene with transparent bg.
+}
+
+function compositeAndBloom() {
+  // Render scene (actors) into rtScene
+  // first render fractal BG into rtScene
+  renderer.setRenderTarget(rtScene);
+  renderer.clear();
+  // draw BG quad
+  bgMat.uniforms.u_time.value = clock.elapsedTime * settings.fractalSpeed;
+  renderer.render(quadScene, quadCam);
+
+  // then render scene overlays (particles + filaments) on top
+  renderer.render(scene, camera);
+
+  // bright-pass: rtScene -> rtBright (downsample + bright)
+  brightMat.uniforms.t.value = rtScene.texture;
+  brightQuad.material = brightMat;
+  quadScene.add(brightQuad);
+  renderer.setRenderTarget(rtBright);
+  renderer.clear();
+  renderer.render(quadScene, quadCam);
+  quadScene.remove(brightQuad);
+
+  // blur passes: ping-pong between rtBlurA and rtBlurB
+  const passes = Math.max(0, Math.floor(settings.blurPasses));
+  let src = rtBright, dst = rtBlurA;
+  for (let i=0;i<passes;i++){
+    // horizontal
+    blurMat.uniforms.t.value = src.texture;
+    blurMat.uniforms.direction.value = new THREE.Vector2(1.0, 0.0);
+    quadScene.add(blurQuad);
+    renderer.setRenderTarget(dst);
+    renderer.clear();
+    renderer.render(quadScene, quadCam);
+    quadScene.remove(blurQuad);
+    // vertical (swap src/dst)
+    let tmp = src; src = dst; dst = tmp;
+    blurMat.uniforms.t.value = src.texture;
+    blurMat.uniforms.direction.value = new THREE.Vector2(0.0, 1.0);
+    quadScene.add(blurQuad);
+    renderer.setRenderTarget(dst);
+    renderer.clear();
+    renderer.render(quadScene, quadCam);
+    quadScene.remove(blurQuad);
+    src = dst;
+    dst = (src === rtBlurA) ? rtBlurB : rtBlurA;
+  }
+
+  // Final composite: scene (rtScene) + bloom (src)
+  compMat.uniforms.sceneTex.value = rtScene.texture;
+  compMat.uniforms.bloomTex.value = src.texture;
+  quadScene.add(compQuad);
+  renderer.setRenderTarget(null);
+  renderer.clear();
+  renderer.render(quadScene, quadCam);
+  quadScene.remove(compQuad);
+}
+
+/* main loop */
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  frame++;
+
+  // update uniforms
+  pMat.uniforms.u_time.value = t * settings.fractalSpeed;
+  pMat.uniforms.u_spread.value = settings.particleSpread;
+  pMat.uniforms.u_speed.value = settings.particleSpeed;
+  bgMat.uniforms.u_time.value = t * settings.fractalSpeed;
+
+  // animate filaments subtly (wobble by seed)
+  filamentsGroup.children.forEach((m, idx) => {
+    const s = m.userData.seed || 0;
+    m.rotation.z = 0.002 * Math.sin(t*0.6 + s*0.12);
+    m.rotation.x = 0.001 * Math.cos(t*0.4 + s*0.07);
+    // slight emissive breathing
+    if (m.material) {
+      const lev = m.userData.level || 0;
+      const e = 0.08 + 0.12 * Math.sin(t*0.9 + s*0.1 + lev);
+      m.material.emissiveIntensity = 0.8 + e;
+    }
+  });
+
+  // update fog gently (fractal can control intensity)
+  scene.fog.density = 0.0015 + 0.003 * Math.sin(t*0.06);
+
+  // Render passes & do bloom composite
+  compositeAndBloom();
+
+  // Recording toggle (webm)
+  if (settings.record && !recorder) startRecorder();
+  if (!settings.record && recorder) stopRecorder();
+}
+animate();
+
+/* ===========
+   Recording (WebM via canvas.captureStream)
+   =========== */
+let recorder = null;
+let recordedChunks = [];
+function startRecorder(){
+  recordedChunks = [];
+  const stream = renderer.domElement.captureStream(60);
+  recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+  recorder.ondataavailable = e => { if (e.data && e.data.size) recordedChunks.push(e.data); };
+  recorder.onstop = () => {
+    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `fractal_field_${Date.now()}.webm`; a.click();
+    URL.revokeObjectURL(url);
+  };
+  recorder.start();
+  document.getElementById('status').innerText = 'Status: recording…';
+}
+function stopRecorder(){
+  if (!recorder) return;
+  recorder.stop();
+  recorder = null;
+  document.getElementById('status').innerText = 'Status: recording saved (download should start)';
+}
+
+/* keyboard shortcuts */
+window.addEventListener('keydown', (e)=>{
+  if (e.code === 'Space') { settings.record = !settings.record; gui.updateDisplay(); }
+  if (e.key === 'r') { tips = createFilamentTree(complexity); }
+  if (e.key === 'b') { settings.blurPasses = Math.max(0, settings.blurPasses-1); gui.updateDisplay(); }
+  if (e.key === 'B') { settings.blurPasses = Math.min(4, settings.blurPasses+1); gui.updateDisplay(); }
+});
+
+/* initial status */
+document.getElementById('status').innerText = 'Status: running. Reduce PARTICLE_COUNT in code if it is too slow.';
+
+/* Done */
+</script>
+</body>
+</html>
