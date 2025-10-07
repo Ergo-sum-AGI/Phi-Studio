@@ -450,6 +450,28 @@ function compositeAndBloom() {
   quadScene.remove(compQuad);
 }
 
+// --- Adaptive Framerate Stabilizer ---
+let frameSamples = [];
+const TARGET_FPS = 30;          // smooth enough for visuals
+const FPS_WINDOW = 20;
+
+function regulatePerformance() {
+  const now = performance.now();
+  frameSamples.push(now);
+  while (frameSamples.length > FPS_WINDOW) frameSamples.shift();
+  if (frameSamples.length > 1) {
+    const fps = 1000 * (frameSamples.length - 1) / (now - frameSamples[0]);
+    if (fps < TARGET_FPS * 0.9 && particles.length > 500) {
+      // reduce load gently
+      for (let i = 0; i < 200; i++) {
+        const p = particles.pop();
+        scene.remove(p.mesh);
+      }
+      console.log(`Auto-throttling particles → ${particles.length}, FPS ≈ ${fps.toFixed(1)}`);
+    }
+  }
+}
+
 /* ======================
    Animation loop
    ====================== */
