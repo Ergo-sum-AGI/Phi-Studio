@@ -1,171 +1,180 @@
-// --- Flake / Particle System integration ---
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Fractal Consciousness — Luminous Field Edition</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  html,body{height:100%;margin:0;background:#000;overflow:hidden;font-family:Inter,system-ui,monospace;color:#dfe}
+  #ui{position:fixed;left:12px;top:12px;z-index:50;background:rgba(0,0,0,0.32);padding:10px;border-radius:8px;backdrop-filter:blur(6px)}
+  #status{position:fixed;right:12px;bottom:12px;z-index:50;padding:8px;border-radius:8px;background:rgba(0,0,0,0.28);color:#9df}
+  canvas{display:block}
+  .small{font-size:12px;color:#bcd}
+</style>
 
-class Flake {
-  constructor(position) {
-    this.pos = position.clone();
-    this.vel = new THREE.Vector3(
-      (Math.random() - 0.5) * 0.3,
-      (Math.random() - 0.5) * 0.3,
-      (Math.random() - 0.5) * 0.3
-    );
-    this.hue = Math.random() * 360;
-    this.life = 0;
-    this.maxLife = 200 + Math.random() * 200;
-    this.trail = []; // store last few positions
-    this.trailLen = 12;
-    for (let i = 0; i < this.trailLen; i++) {
-      this.trail.push(this.pos.clone());
-    }
-  }
+<!-- three + dat.gui via cdnjs (r128 compatible UMD) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.9/dat.gui.min.js"></script>
+</head>
+<body>
+<div id="ui"><div style="font-weight:600;color:#cfe">Fractal Consciousness — Controls</div></div>
+<div id="status">Status: initializing…</div>
+<canvas id="c"></canvas>
 
-  update(dt) {
-    // swirl force around Y-axis
-    const swirl = new THREE.Vector3(-this.pos.z, 0, this.pos.x).normalize().multiplyScalar(0.04);
-    // noise
-    const noise = new THREE.Vector3(
-      (Math.random() - 0.5) * 0.02,
-      (Math.random() - 0.5) * 0.02,
-      (Math.random() - 0.5) * 0.02
-    );
-    // attraction toward branch center lightly
-    const attract = this.pos.clone().multiplyScalar(-0.0005);
+<script>
+/* ======================
+   Configurable constants
+   ====================== */
+const PARTICLE_COUNT = 16000; // lower if slow (4000,8000,16000)
+const BASE_WIDTH = window.innerWidth;
+const BASE_HEIGHT = window.innerHeight;
 
-    this.vel.add(swirl).add(noise).add(attract);
-    this.vel.multiplyScalar(0.98);
-    this.pos.add(this.vel.clone().multiplyScalar(dt));
+/* ======================
+   Renderer / Scene / Camera
+   ====================== */
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(BASE_WIDTH, BASE_HEIGHT);
+renderer.outputEncoding = THREE.sRGBEncoding;
 
-    // update hue, life
-    this.hue = (this.hue + 0.3) % 360;
-    this.life++;
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000010, 0.0025);
 
-    // update trail
-    this.trail.pop();
-    this.trail.unshift(this.pos.clone());
-  }
+const camera = new THREE.PerspectiveCamera(60, BASE_WIDTH/BASE_HEIGHT, 0.1, 1000);
+camera.position.set(0, 10, 110);
+scene.add(camera);
 
-  isDead() {
-    return this.life > this.maxLife;
-  }
-}
-
-class FlakeSystem {
-  constructor(maxCount = 500) {
-    this.flakes = [];
-    this.max = maxCount;
-
-    // buffer geometry for flake heads
-    this.geometry = new THREE.BufferGeometry();
-    this.positions = new Float32Array(this.max * 3);
-    this.colors = new Float32Array(this.max * 3);
-    this.sizes = new Float32Array(this.max);
-    this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
-    this.geometry.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
-    this.geometry.setAttribute('size', new THREE.BufferAttribute(this.sizes, 1));
-
-    // material
-    this.material = new THREE.PointsMaterial({
-      vertexColors: true,
-      size: 1.8,
-      transparent: true,
-      opacity: 0.9,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending
-    });
-
-    this.points = new THREE.Points(this.geometry, this.material);
-    scene.add(this.points);
-
-    // optionally, add trails as Lines (one per flake)
-    this.trails = [];
-  }
-
-  spawn(pos) {
-    if (this.flakes.length < this.max) {
-      const f = new Flake(pos);
-      this.flakes.push(f);
-      // optionally create a Line for its trail
-      const trailGeo = new THREE.BufferGeometry();
-      const arr = new Float32Array(f.trailLen * 3);
-      trailGeo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
-      const line = new THREE.Line(trailGeo,
-        new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 })
-      );
-      line.userData.flake = f;
-      scene.add(line);
-      this.trails.push(line);
-    }
-  }
-
-  update(dt) {
-    let i = 0;
-    for (let flake of this.flakes) {
-      flake.update(dt);
-      if (!flake.isDead()) {
-        this.positions[3*i] = flake.pos.x;
-        this.positions[3*i+1] = flake.pos.y;
-        this.positions[3*i+2] = flake.pos.z;
-        const c = new THREE.Color().setHSL((flake.hue / 360), 1, 0.6);
-        this.colors[3*i] = c.r;
-        this.colors[3*i+1] = c.g;
-        this.colors[3*i+2] = c.b;
-        this.sizes[i] = 2.0;
-        // also update trail line if exists
-        if (this.trails[i]) {
-          const line = this.trails[i];
-          const arr = line.geometry.attributes.position.array;
-          for (let j = 0; j < flake.trailLen; j++) {
-            const p = flake.trail[j];
-            arr[3*j] = p.x; arr[3*j+1] = p.y; arr[3*j+2] = p.z;
-          }
-          line.geometry.attributes.position.needsUpdate = true;
-          line.material.opacity = 0.2 * (1 - flake.life / flake.maxLife);
-        }
-        i++;
-      }
-    }
-    // remove dead
-    this.flakes = this.flakes.filter((f, idx) => {
-      if (f.isDead()) {
-        // also remove its trail
-        if (this.trails[idx]) {
-          scene.remove(this.trails[idx]);
-        }
-        return false;
-      }
-      return true;
-    });
-    // adjust geometry count
-    this.geometry.setDrawRange(0, this.flakes.length);
-    this.geometry.attributes.position.needsUpdate = true;
-    this.geometry.attributes.color.needsUpdate = true;
-    this.geometry.attributes.size.needsUpdate = true;
-  }
-}
-
-const flakeSys = new FlakeSystem(600);
-
-// In your animation loop, instead of just rigid snow, you do:
-function animate() {
-  requestAnimationFrame(animate);
-  const dt = 0.016; // or based on time delta
-
-  root.rotation.y += params.rotationSpeed * 0.6;
-
-  // spawn from branch tips often
-  tips.forEach((tip, idx) => {
-    if (Math.random() < 0.05) {
-      flakeSys.spawn(tip);
-    }
+/* ----------------------
+   Render targets for bloom pipeline
+   ---------------------- */
+function makeRT(w, h) {
+  return new THREE.WebGLRenderTarget(w, h, {
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    format: THREE.RGBAFormat,
+    encoding: THREE.sRGBEncoding
   });
-
-  flakeSys.update(dt);
-
-  // existing traversal to color branches etc.
-  scene.traverse(obj => {
-    if (obj.isMesh) {
-      // color or pulsing logic
-    }
-  });
-
-  renderer.render(scene, camera);
 }
+let rtScene = makeRT(BASE_WIDTH, BASE_HEIGHT);
+let rtBright = makeRT(Math.floor(BASE_WIDTH/2), Math.floor(BASE_HEIGHT/2));
+let rtBlurA = makeRT(Math.floor(BASE_WIDTH/4), Math.floor(BASE_HEIGHT/4));
+let rtBlurB = makeRT(Math.floor(BASE_WIDTH/4), Math.floor(BASE_HEIGHT/4));
+
+/* Orthographic camera & quad for fullscreen passes */
+const quadScene = new THREE.Scene();
+const quadCam = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const quadGeo = new THREE.PlaneBufferGeometry(2,2);
+
+/* ======================
+   Utility shaders (fbm, noise)
+   ====================== */
+// Common GLSL: hash, noise, fbm (2D)
+const glslCommon = `
+  // IQ-style hash / noise
+  float hash21(vec2 p){p = fract(p*vec2(123.34,456.21)); p += dot(p,p+45.32); return fract(p.x*p.y);}
+  float noise(vec2 p){
+    vec2 i=floor(p); vec2 f=fract(p);
+    float a=hash21(i), b=hash21(i+vec2(1.,0.)), c=hash21(i+vec2(0.,1.)), d=hash21(i+vec2(1.,1.));
+    vec2 u=f*f*(3.0-2.0*f);
+    return mix(a,b,u.x) + (c - a)*u.y*(1.0-u.x) + (d - b)*u.x*u.y;
+  }
+  float fbm(vec2 x) {
+    float v=0.0; float a=0.5;
+    for(int i=0;i<6;i++){ v += a*noise(x); x *= 2.0; a *= 0.5; }
+    return v;
+  }
+`;
+
+/* ======================
+   Fractal background shader (fullscreen quad)
+   ====================== */
+const bgFrag = `
+  precision highp float;
+  uniform float u_time;
+  uniform vec2 u_res;
+  ${glslCommon}
+  void main(){
+    vec2 uv = (gl_FragCoord.xy / u_res.xy) * 2.0 - 1.0;
+    uv.x *= u_res.x/u_res.y;
+    vec2 p = uv * 1.8;
+    float t = u_time * 0.08;
+
+    // layered fbm with golden ratio scaling
+    float f = fbm(p * 1.0 + vec2(t, t*0.6));
+    float g = fbm(p * 2.2 + vec2(-t*0.7, t*0.5));
+    float m = smoothstep(0.14, 0.8, f * (0.7 + 0.6*g));
+
+    // golden-harmonic coloring
+    float phi = 1.61803398875;
+    float hue = mod((atan(uv.y,uv.x)/3.14159 + 0.5) + f*0.3 + t*0.03, 1.0);
+    vec3 col = vec3(0.5 + 0.5*cos(6.28318*(vec3(hue, hue+0.33, hue+0.66))));
+    col *= mix(0.35, 1.6, m);
+    // subtle vignetting and fog
+    float vign = smoothstep(1.6, 0.5, length(uv));
+    col *= 1.0 - 0.4 * vign;
+    gl_FragColor = vec4(col, clamp(m, 0.0, 1.0));
+  }
+`;
+const bgMat = new THREE.ShaderMaterial({
+  fragmentShader: bgFrag,
+  vertexShader: `void main(){ gl_Position = vec4(position,1.0); }`,
+  uniforms: {
+    u_time: { value: 0.0 },
+    u_res: { value: new THREE.Vector2(BASE_WIDTH, BASE_HEIGHT) }
+  },
+  depthWrite: false
+});
+const bgQuad = new THREE.Mesh(quadGeo, bgMat);
+quadScene.add(bgQuad);
+
+/* ======================
+   Particle system: GPU-driven points (vertex displaces with fbm)
+   ====================== */
+const PARTICLE = {
+  count: PARTICLE_COUNT,
+  spread: 60
+};
+
+// create base positions attribute (random spread around spiral region)
+const basePos = new Float32Array(PARTICLE.count * 3);
+for (let i=0;i<PARTICLE.count;i++){
+  const a = Math.random() * Math.PI * 2;
+  const r = Math.pow(Math.random(), 0.7) * (10 + Math.random()*38);
+  const x = Math.cos(a) * r * (0.2 + Math.random()*0.9);
+  const y = (Math.random()-0.2) * 18;
+  const z = Math.sin(a) * r * (0.2 + Math.random()*0.9);
+  basePos[3*i] = x;
+  basePos[3*i+1] = y;
+  basePos[3*i+2] = z;
+}
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(basePos, 3));
+pGeo.setAttribute('a_seed', new THREE.BufferAttribute(new Float32Array(Array.from({length:PARTICLE.count}, (_,i)=>Math.random()*1000)), 1));
+
+/* Particle shader (vertex computes animated position with fbm-based displacement) */
+const pVert = `
+  precision highp float;
+  attribute vec3 position;
+  attribute float a_seed;
+  uniform float u_time;
+  uniform float u_spread;
+  uniform float u_speed;
+  varying float v_life;
+  varying vec3 v_base;
+  ${glslCommon}
+
+  // 2D curl-ish pseudo-force via fbm derivatives
+  vec2 curl2(vec2 p) {
+    float e = 0.001;
+    float n1 = fbm(p + vec2(e, 0.0));
+    float n2 = fbm(p + vec2(-e, 0.0));
+    float n3 = fbm(p + vec2(0.0, e));
+    float n4 = fbm(p + vec2(0.0, -e));
+    return vec2(n3 - n4, n2 - n1) / (2.0 * e);
+  }
+
+  void main(){
+    v_base = position;
+    // work in 2D field (x,z) for swirling
+    vec2 pXZ = position.xz * 0.03 + u_time * 0.02 * u_*
