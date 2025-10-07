@@ -1,161 +1,171 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Golden Ratio Consciousness Field — Panta Rhei</title>
-<style>
-  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
-  canvas { display: block; width: 100%; height: 100%; }
-</style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.9/dat.gui.min.js"></script>
-</head>
-<body>
-<canvas id="c"></canvas>
-<script>
-const canvas = document.getElementById("c");
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(window.devicePixelRatio);
+// --- Flake / Particle System integration ---
 
-const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x000010, 0.01);
-const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 2000);
-camera.position.set(0, 0, 80);
-
-const φ = (1 + Math.sqrt(5)) / 2;
-const goldenAngle = Math.PI * 2 / φ;
-const eta = 0.809016994;
-const PhiStar = 1 / (4 * Math.PI * φ);
-
-let params = {
-  fogDensity: 0.01,
-  rotationSpeed: 0.01,
-  complexity: 6,
-  recording: false
-};
-
-// dat.GUI overlay
-const gui = new dat.GUI();
-gui.add(params, 'fogDensity', 0.001, 0.05).onChange(v => scene.fog.density = v);
-gui.add(params, 'rotationSpeed', 0.001, 0.05);
-gui.add(params, 'complexity', 3, 10, 1).onChange(() => rebuild());
-gui.add(params, 'recording').name("Capture (toggle)");
-
-const root = new THREE.Object3D();
-scene.add(root);
-
-const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-const snowMaterial = new THREE.PointsMaterial({ size: 0.6, vertexColors: true, transparent: true });
-
-function createTube(points) {
-  const curve = new THREE.CatmullRomCurve3(points);
-  const geometry = new THREE.TubeGeometry(curve, 32, 0.2, 8, false);
-  return new THREE.Mesh(geometry, lineMaterial.clone());
-}
-
-function createBranch(parent, level, maxLevels, length, angleOffset, time) {
-  if (level > maxLevels) return;
-
-  const points = [];
-  for (let i = 0; i <= 20; i++) {
-    const t = i / 20;
-    const x = t * length * Math.cos(angleOffset + t * goldenAngle * eta);
-    const y = t * length * Math.sin(angleOffset + t * goldenAngle * eta);
-    const z = t * length;
-    points.push(new THREE.Vector3(x, y, z));
-  }
-
-  const tube = createTube(points);
-  parent.add(tube);
-
-  const tip = points[points.length - 1];
-  const snowGeo = new THREE.BufferGeometry();
-  const snowVerts = [];
-  const snowColors = [];
-  const n = 80;
-  for (let i = 0; i < n; i++) {
-    const θ = i * goldenAngle;
-    const r = 1 + 0.5 * Math.random();
-    snowVerts.push(tip.x + r * Math.cos(θ), tip.y + r * Math.sin(θ), tip.z + (Math.random() - 0.5));
-    const c = new THREE.Color().setHSL((θ * 180 / Math.PI) % 360 / 360, 1, 0.5);
-    snowColors.push(c.r, c.g, c.b);
-  }
-  snowGeo.setAttribute('position', new THREE.Float32BufferAttribute(snowVerts, 3));
-  snowGeo.setAttribute('color', new THREE.Float32BufferAttribute(snowColors, 3));
-  const snow = new THREE.Points(snowGeo, snowMaterial.clone());
-  parent.add(snow);
-
-  const childCount = 2 + Math.floor(PhiStar * 3);
-  for (let i = 0; i < childCount; i++) {
-    const child = new THREE.Object3D();
-    child.position.copy(tip);
-    parent.add(child);
-    createBranch(child, level + 1, maxLevels, length / φ, angleOffset + goldenAngle * i, time);
-  }
-}
-
-function rebuild() {
-  root.clear();
-  createBranch(root, 0, params.complexity, 20, 0, 0);
-}
-
-rebuild();
-
-// simple 1080p capture (client-side)
-let recorder, chunks = [];
-function toggleRecording() {
-  if (!params.recording) {
-    if (recorder) {
-      recorder.stop();
-      recorder = null;
+class Flake {
+  constructor(position) {
+    this.pos = position.clone();
+    this.vel = new THREE.Vector3(
+      (Math.random() - 0.5) * 0.3,
+      (Math.random() - 0.5) * 0.3,
+      (Math.random() - 0.5) * 0.3
+    );
+    this.hue = Math.random() * 360;
+    this.life = 0;
+    this.maxLife = 200 + Math.random() * 200;
+    this.trail = []; // store last few positions
+    this.trailLen = 12;
+    for (let i = 0; i < this.trailLen; i++) {
+      this.trail.push(this.pos.clone());
     }
-    return;
   }
-  const stream = canvas.captureStream(60);
-  recorder = new MediaRecorder(stream, { mimeType: "video/webm; codecs=vp9" });
-  recorder.ondataavailable = e => chunks.push(e.data);
-  recorder.onstop = () => {
-    const blob = new Blob(chunks, { type: 'video/webm' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'golden_mean_field.webm';
-    a.click();
-  };
-  chunks = [];
-  recorder.start();
-}
-gui.__controllers[3].onChange(toggleRecording);
 
-let t = 0;
+  update(dt) {
+    // swirl force around Y-axis
+    const swirl = new THREE.Vector3(-this.pos.z, 0, this.pos.x).normalize().multiplyScalar(0.04);
+    // noise
+    const noise = new THREE.Vector3(
+      (Math.random() - 0.5) * 0.02,
+      (Math.random() - 0.5) * 0.02,
+      (Math.random() - 0.5) * 0.02
+    );
+    // attraction toward branch center lightly
+    const attract = this.pos.clone().multiplyScalar(-0.0005);
+
+    this.vel.add(swirl).add(noise).add(attract);
+    this.vel.multiplyScalar(0.98);
+    this.pos.add(this.vel.clone().multiplyScalar(dt));
+
+    // update hue, life
+    this.hue = (this.hue + 0.3) % 360;
+    this.life++;
+
+    // update trail
+    this.trail.pop();
+    this.trail.unshift(this.pos.clone());
+  }
+
+  isDead() {
+    return this.life > this.maxLife;
+  }
+}
+
+class FlakeSystem {
+  constructor(maxCount = 500) {
+    this.flakes = [];
+    this.max = maxCount;
+
+    // buffer geometry for flake heads
+    this.geometry = new THREE.BufferGeometry();
+    this.positions = new Float32Array(this.max * 3);
+    this.colors = new Float32Array(this.max * 3);
+    this.sizes = new Float32Array(this.max);
+    this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+    this.geometry.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
+    this.geometry.setAttribute('size', new THREE.BufferAttribute(this.sizes, 1));
+
+    // material
+    this.material = new THREE.PointsMaterial({
+      vertexColors: true,
+      size: 1.8,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+
+    this.points = new THREE.Points(this.geometry, this.material);
+    scene.add(this.points);
+
+    // optionally, add trails as Lines (one per flake)
+    this.trails = [];
+  }
+
+  spawn(pos) {
+    if (this.flakes.length < this.max) {
+      const f = new Flake(pos);
+      this.flakes.push(f);
+      // optionally create a Line for its trail
+      const trailGeo = new THREE.BufferGeometry();
+      const arr = new Float32Array(f.trailLen * 3);
+      trailGeo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+      const line = new THREE.Line(trailGeo,
+        new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 })
+      );
+      line.userData.flake = f;
+      scene.add(line);
+      this.trails.push(line);
+    }
+  }
+
+  update(dt) {
+    let i = 0;
+    for (let flake of this.flakes) {
+      flake.update(dt);
+      if (!flake.isDead()) {
+        this.positions[3*i] = flake.pos.x;
+        this.positions[3*i+1] = flake.pos.y;
+        this.positions[3*i+2] = flake.pos.z;
+        const c = new THREE.Color().setHSL((flake.hue / 360), 1, 0.6);
+        this.colors[3*i] = c.r;
+        this.colors[3*i+1] = c.g;
+        this.colors[3*i+2] = c.b;
+        this.sizes[i] = 2.0;
+        // also update trail line if exists
+        if (this.trails[i]) {
+          const line = this.trails[i];
+          const arr = line.geometry.attributes.position.array;
+          for (let j = 0; j < flake.trailLen; j++) {
+            const p = flake.trail[j];
+            arr[3*j] = p.x; arr[3*j+1] = p.y; arr[3*j+2] = p.z;
+          }
+          line.geometry.attributes.position.needsUpdate = true;
+          line.material.opacity = 0.2 * (1 - flake.life / flake.maxLife);
+        }
+        i++;
+      }
+    }
+    // remove dead
+    this.flakes = this.flakes.filter((f, idx) => {
+      if (f.isDead()) {
+        // also remove its trail
+        if (this.trails[idx]) {
+          scene.remove(this.trails[idx]);
+        }
+        return false;
+      }
+      return true;
+    });
+    // adjust geometry count
+    this.geometry.setDrawRange(0, this.flakes.length);
+    this.geometry.attributes.position.needsUpdate = true;
+    this.geometry.attributes.color.needsUpdate = true;
+    this.geometry.attributes.size.needsUpdate = true;
+  }
+}
+
+const flakeSys = new FlakeSystem(600);
+
+// In your animation loop, instead of just rigid snow, you do:
 function animate() {
   requestAnimationFrame(animate);
-  t += 1;
+  const dt = 0.016; // or based on time delta
 
-  root.rotation.y += params.rotationSpeed;
-  root.rotation.x += params.rotationSpeed * 0.5;
+  root.rotation.y += params.rotationSpeed * 0.6;
 
-  scene.traverse(obj => {
-    if (obj.isPoints) {
-      obj.rotation.z += 0.002;
-      obj.material.opacity = 0.7 + 0.3 * Math.sin(t * 0.01);
+  // spawn from branch tips often
+  tips.forEach((tip, idx) => {
+    if (Math.random() < 0.05) {
+      flakeSys.spawn(tip);
     }
+  });
+
+  flakeSys.update(dt);
+
+  // existing traversal to color branches etc.
+  scene.traverse(obj => {
     if (obj.isMesh) {
-      const hue = (t * 0.2 + obj.position.z * φ) % 360;
-      obj.material.color.setHSL(hue / 360, 1, 0.5);
+      // color or pulsing logic
     }
   });
 
   renderer.render(scene, camera);
 }
-animate();
-
-window.addEventListener("resize", () => {
-  renderer.setSize(innerWidth, innerHeight);
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-});
-</script>
-</body>
-</html>
