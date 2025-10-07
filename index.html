@@ -23,6 +23,14 @@
 
 <script>
 /* ======================
+   Mathematical constants
+   ====================== */
+const φ = (1 + Math.sqrt(5))/2;
+const goldenAngle = Math.PI*2/φ;
+const eta = 0.809016994;
+const PhiStar = 1/(4*Math.PI*φ);
+
+/* ======================
    Configurable constants
    ====================== */
 const PARTICLE_COUNT = 16000; // lower if slow (4000,8000,16000)
@@ -36,7 +44,6 @@ const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setSize(BASE_WIDTH, BASE_HEIGHT);
-renderer.outputEncoding = THREE.sRGBEncoding;
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x000010, 0.0025);
@@ -52,8 +59,7 @@ function makeRT(w, h) {
   return new THREE.WebGLRenderTarget(w, h, {
     minFilter: THREE.LinearFilter,
     magFilter: THREE.LinearFilter,
-    format: THREE.RGBAFormat,
-    encoding: THREE.sRGBEncoding
+    format: THREE.RGBAFormat
   });
 }
 let rtScene = makeRT(BASE_WIDTH, BASE_HEIGHT);
@@ -64,7 +70,7 @@ let rtBlurB = makeRT(Math.floor(BASE_WIDTH/4), Math.floor(BASE_HEIGHT/4));
 /* Orthographic camera & quad for fullscreen passes */
 const quadScene = new THREE.Scene();
 const quadCam = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
-const quadGeo = new THREE.PlaneBufferGeometry(2,2);
+const quadGeo = new THREE.PlaneGeometry(2,2);
 
 /* ======================
    Utility shaders (fbm, noise)
@@ -154,8 +160,6 @@ pGeo.setAttribute('a_seed', new THREE.BufferAttribute(new Float32Array(Array.fro
 
 /* Particle shader (vertex computes animated position with fbm-based displacement) */
 const pVert = `
-  precision highp float;
-  attribute vec3 position;
   attribute float a_seed;
   uniform float u_time;
   uniform float u_spread;
@@ -345,11 +349,12 @@ const compFrag = `
   precision highp float;
   uniform sampler2D sceneTex;
   uniform sampler2D bloomTex;
+  uniform float bloomStrength;
   varying vec2 vUv;
   void main(){
     vec3 sc = texture2D(sceneTex, vUv).rgb;
     vec3 b = texture2D(bloomTex, vUv).rgb;
-    vec3 outc = sc + b * 1.4; // bloom strength
+    vec3 outc = sc + b * bloomStrength;
     // tone mapping and gamma
     outc = outc / (outc + vec3(1.0));
     outc = pow(outc, vec3(1.0/2.2));
@@ -359,7 +364,7 @@ const compFrag = `
 const compMat = new THREE.ShaderMaterial({
   fragmentShader: compFrag,
   vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position,1.0); }`,
-  uniforms: { sceneTex: { value: null }, bloomTex: { value: null } },
+  uniforms: { sceneTex: { value: null }, bloomTex: { value: null }, bloomStrength: { value: 1.4 } },
   depthWrite: false
 });
 const compQuad = new THREE.Mesh(quadGeo, compMat);
@@ -387,7 +392,7 @@ gui.add(settings, 'fractalScale', 0.3, 3.0).name('Fractal Scale');
 gui.add(settings, 'particleSpread', 0.3, 2.5).name('Particle Spread').onChange(v=>pMat.uniforms.u_spread.value = v);
 gui.add(settings, 'particleSpeed', 0.1, 3.0).name('Particle Speed').onChange(v=>pMat.uniforms.u_speed.value = v);
 gui.add(settings, 'bloomThreshold', 0.0, 1.0).name('Bloom Threshold').onChange(v=>brightMat.uniforms.threshold.value = v);
-gui.add(settings, 'bloomStrength', 0.0, 3.0).name('Bloom Strength');
+gui.add(settings, 'bloomStrength', 0.0, 3.0).name('Bloom Strength').onChange(v=>compMat.uniforms.bloomStrength.value = v);
 gui.add(settings, 'blurPasses', 0, 4, 1).name('Blur Passes');
 gui.add(settings, 'complexity', 3, 10, 1).name('Complexity').onChange(v=>{
   complexity = v; tips = createFilamentTree(complexity);
@@ -417,20 +422,8 @@ window.addEventListener('resize', onResize);
 let clock = new THREE.Clock();
 let frame = 0;
 
-function renderPasses() {
-  // 1) render full scene to rtScene
-  renderer.setRenderTarget(rtScene);
-  renderer.clear();
-  renderer.render(scene, camera);
-
-  // 2) render background fractal into rtScene as overlay? (we have fractal fullscreen quad in quadScene)
-  // Instead, render background separately first into rtScene by drawing quadScene then scene on top.
-  // We'll composite: render background into rtScene (clear), then render scene with transparent bg.
-}
-
 function compositeAndBloom() {
-  // Render scene (actors) into rtScene
-  // first render fractal BG into rtScene
+  // Render fractal BG + scene into rtScene
   renderer.setRenderTarget(rtScene);
   renderer.clear();
   // draw BG quad
@@ -455,7 +448,7 @@ function compositeAndBloom() {
   for (let i=0;i<passes;i++){
     // horizontal
     blurMat.uniforms.t.value = src.texture;
-    blurMat.uniforms.direction.value = new THREE.Vector2(1.0, 0.0);
+    blurMat.uniforms.direction.value.set(1.0, 0.0);
     quadScene.add(blurQuad);
     renderer.setRenderTarget(dst);
     renderer.clear();
@@ -464,7 +457,7 @@ function compositeAndBloom() {
     // vertical (swap src/dst)
     let tmp = src; src = dst; dst = tmp;
     blurMat.uniforms.t.value = src.texture;
-    blurMat.uniforms.direction.value = new THREE.Vector2(0.0, 1.0);
+    blurMat.uniforms.direction.value.set(0.0, 1.0);
     quadScene.add(blurQuad);
     renderer.setRenderTarget(dst);
     renderer.clear();
@@ -477,6 +470,7 @@ function compositeAndBloom() {
   // Final composite: scene (rtScene) + bloom (src)
   compMat.uniforms.sceneTex.value = rtScene.texture;
   compMat.uniforms.bloomTex.value = src.texture;
+  compMat.uniforms.bloomStrength.value = settings.bloomStrength;
   quadScene.add(compQuad);
   renderer.setRenderTarget(null);
   renderer.clear();
@@ -502,7 +496,7 @@ function animate() {
     m.rotation.z = 0.002 * Math.sin(t*0.6 + s*0.12);
     m.rotation.x = 0.001 * Math.cos(t*0.4 + s*0.07);
     // slight emissive breathing
-    if (m.material) {
+    if (m.material && m.material.emissive) {
       const lev = m.userData.level || 0;
       const e = 0.08 + 0.12 * Math.sin(t*0.9 + s*0.1 + lev);
       m.material.emissiveIntensity = 0.8 + e;
@@ -514,18 +508,14 @@ function animate() {
 
   // Render passes & do bloom composite
   compositeAndBloom();
-
-  // Recording toggle (webm)
-  if (settings.record && !recorder) startRecorder();
-  if (!settings.record && recorder) stopRecorder();
 }
-animate();
 
 /* ===========
    Recording (WebM via canvas.captureStream)
    =========== */
 let recorder = null;
 let recordedChunks = [];
+
 function startRecorder(){
   recordedChunks = [];
   const stream = renderer.domElement.captureStream(60);
@@ -540,12 +530,22 @@ function startRecorder(){
   recorder.start();
   document.getElementById('status').innerText = 'Status: recording…';
 }
+
 function stopRecorder(){
   if (!recorder) return;
   recorder.stop();
   recorder = null;
   document.getElementById('status').innerText = 'Status: recording saved (download should start)';
 }
+
+/* Start animation loop */
+animate();
+
+/* Handle recording toggle after recorder functions are defined */
+setInterval(() => {
+  if (settings.record && !recorder) startRecorder();
+  if (!settings.record && recorder) stopRecorder();
+}, 100);
 
 /* keyboard shortcuts */
 window.addEventListener('keydown', (e)=>{
@@ -556,9 +556,7 @@ window.addEventListener('keydown', (e)=>{
 });
 
 /* initial status */
-document.getElementById('status').innerText = 'Status: running. Reduce PARTICLE_COUNT in code if it is too slow.';
-
-/* Done */
+document.getElementById('status').innerText = 'Status: running. Reduce PARTICLE_COUNT in code if too slow.';
 </script>
 </body>
 </html>
