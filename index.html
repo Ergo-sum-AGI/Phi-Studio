@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Golden Ratio Consciousness Field — Panta Rhei</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.9/dat.gui.min.js"></script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById("c");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000010, 0.01);
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 2000);
+camera.position.set(0, 0, 80);
+
+const φ = (1 + Math.sqrt(5)) / 2;
+const goldenAngle = Math.PI * 2 / φ;
+const eta = 0.809016994;
+const PhiStar = 1 / (4 * Math.PI * φ);
+
+let params = {
+  fogDensity: 0.01,
+  rotationSpeed: 0.01,
+  complexity: 6,
+  recording: false
+};
+
+// dat.GUI overlay
+const gui = new dat.GUI();
+gui.add(params, 'fogDensity', 0.001, 0.05).onChange(v => scene.fog.density = v);
+gui.add(params, 'rotationSpeed', 0.001, 0.05);
+gui.add(params, 'complexity', 3, 10, 1).onChange(() => rebuild());
+gui.add(params, 'recording').name("Capture (toggle)");
+
+const root = new THREE.Object3D();
+scene.add(root);
+
+const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+const snowMaterial = new THREE.PointsMaterial({ size: 0.6, vertexColors: true, transparent: true });
+
+function createTube(points) {
+  const curve = new THREE.CatmullRomCurve3(points);
+  const geometry = new THREE.TubeGeometry(curve, 32, 0.2, 8, false);
+  return new THREE.Mesh(geometry, lineMaterial.clone());
+}
+
+function createBranch(parent, level, maxLevels, length, angleOffset, time) {
+  if (level > maxLevels) return;
+
+  const points = [];
+  for (let i = 0; i <= 20; i++) {
+    const t = i / 20;
+    const x = t * length * Math.cos(angleOffset + t * goldenAngle * eta);
+    const y = t * length * Math.sin(angleOffset + t * goldenAngle * eta);
+    const z = t * length;
+    points.push(new THREE.Vector3(x, y, z));
+  }
+
+  const tube = createTube(points);
+  parent.add(tube);
+
+  const tip = points[points.length - 1];
+  const snowGeo = new THREE.BufferGeometry();
+  const snowVerts = [];
+  const snowColors = [];
+  const n = 80;
+  for (let i = 0; i < n; i++) {
+    const θ = i * goldenAngle;
+    const r = 1 + 0.5 * Math.random();
+    snowVerts.push(tip.x + r * Math.cos(θ), tip.y + r * Math.sin(θ), tip.z + (Math.random() - 0.5));
+    const c = new THREE.Color().setHSL((θ * 180 / Math.PI) % 360 / 360, 1, 0.5);
+    snowColors.push(c.r, c.g, c.b);
+  }
+  snowGeo.setAttribute('position', new THREE.Float32BufferAttribute(snowVerts, 3));
+  snowGeo.setAttribute('color', new THREE.Float32BufferAttribute(snowColors, 3));
+  const snow = new THREE.Points(snowGeo, snowMaterial.clone());
+  parent.add(snow);
+
+  const childCount = 2 + Math.floor(PhiStar * 3);
+  for (let i = 0; i < childCount; i++) {
+    const child = new THREE.Object3D();
+    child.position.copy(tip);
+    parent.add(child);
+    createBranch(child, level + 1, maxLevels, length / φ, angleOffset + goldenAngle * i, time);
+  }
+}
+
+function rebuild() {
+  root.clear();
+  createBranch(root, 0, params.complexity, 20, 0, 0);
+}
+
+rebuild();
+
+// simple 1080p capture (client-side)
+let recorder, chunks = [];
+function toggleRecording() {
+  if (!params.recording) {
+    if (recorder) {
+      recorder.stop();
+      recorder = null;
+    }
+    return;
+  }
+  const stream = canvas.captureStream(60);
+  recorder = new MediaRecorder(stream, { mimeType: "video/webm; codecs=vp9" });
+  recorder.ondataavailable = e => chunks.push(e.data);
+  recorder.onstop = () => {
+    const blob = new Blob(chunks, { type: 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'golden_mean_field.webm';
+    a.click();
+  };
+  chunks = [];
+  recorder.start();
+}
+gui.__controllers[3].onChange(toggleRecording);
+
+let t = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  t += 1;
+
+  root.rotation.y += params.rotationSpeed;
+  root.rotation.x += params.rotationSpeed * 0.5;
+
+  scene.traverse(obj => {
+    if (obj.isPoints) {
+      obj.rotation.z += 0.002;
+      obj.material.opacity = 0.7 + 0.3 * Math.sin(t * 0.01);
+    }
+    if (obj.isMesh) {
+      const hue = (t * 0.2 + obj.position.z * φ) % 360;
+      obj.material.color.setHSL(hue / 360, 1, 0.5);
+    }
+  });
+
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener("resize", () => {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+});
+</script>
+</body>
+</html>
